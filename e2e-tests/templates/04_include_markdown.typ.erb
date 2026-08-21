@@ -1,0 +1,15 @@
+<%# Test for include_markdown helper %>
+<% fixture_path = File.join(__dir__, "../fixtures/sample.md") %>
+
+= Include Markdown Test
+
+== Included Content from External File
+
+<%= include_markdown(fixture_path) %>
+
+== End of Included Content
+
+This document tests the `include_markdown` helper which reads
+and converts external Markdown files to Typst syntax.
+
+The content above was loaded from `fixtures/sample.md`.

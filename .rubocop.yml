@@ -1,0 +1,56 @@
+AllCops:
+  TargetRubyVersion: 2.7
+  NewCops: enable
+  Exclude:
+    - 'vendor/**/*'
+    - 'test/dummy/**/*'
+    - 'bin/**/*'
+    - 'tmp/**/*'
+    - 'coverage/**/*'
+
+Style/Documentation:
+  Enabled: false
+
+Style/StringLiterals:
+  Enabled: true
+  EnforcedStyle: double_quotes
+
+Style/StringLiteralsInInterpolation:
+  Enabled: true
+  EnforcedStyle: double_quotes
+
+Metrics/MethodLength:
+  Max: 50
+  Exclude:
+    - 'test/**/*'
+
+Metrics/ClassLength:
+  Max: 300
+  Exclude:
+    - 'test/**/*'
+
+Metrics/BlockLength:
+  Exclude:
+    - 'test/**/*'
+    - 'Rakefile'
+    - '**/*.rake'
+
+Layout/LineLength:
+  Max: 120
+  Exclude:
+    - 'test/**/*'
+
+Metrics/AbcSize:
+  Max: 30
+  Exclude:
+    - 'test/**/*'
+
+Metrics/CyclomaticComplexity:
+  Max: 10
+
+Metrics/PerceivedComplexity:
+  Max: 10
+
+Style/FrozenStringLiteralComment:
+  Enabled: true
+  EnforcedStyle: always

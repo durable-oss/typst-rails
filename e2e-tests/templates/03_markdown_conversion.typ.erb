@@ -1,0 +1,43 @@
+<%# Test for Markdown to Typst conversion %>
+<% markdown_content = <<~MD
+  # Main Heading
+  ## Second Level
+  ### Third Level
+
+  This is a paragraph with **bold text** and *italic text*.
+
+  Here's a [link](https://typst.app) and an image:
+  ![Typst Logo](https://typst.app/logo.png)
+
+  - List item 1
+  - List item 2
+  - List item 3
+
+  `inline code` example
+
+  More __bold__ and _italic_ variations.
+MD
+%>
+
+= Markdown Conversion Test
+
+<%= markdown_to_typst(markdown_content) %>
+
+== Testing Individual Conversions
+
+Headers:
+<%= markdown_to_typst("# H1\n## H2\n### H3\n#### H4\n##### H5\n###### H6") %>
+
+Emphasis:
+<%= markdown_to_typst("**bold** and *italic* and __also bold__ and _also italic_") %>
+
+Links:
+<%= markdown_to_typst("[Typst Website](https://typst.app)") %>
+
+Images:
+<%= markdown_to_typst("![Alt text](image.png)") %>
+
+Code:
+<%= markdown_to_typst("Here is `some code` inline") %>
+
+This document tests Markdown to Typst syntax conversion.

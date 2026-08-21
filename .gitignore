@@ -1,0 +1,29 @@
+/.bundle/
+/doc/
+/log/*.log
+/pkg/
+/tmp/
+/test/dummy/db/*.sqlite3
+/test/dummy/db/*.sqlite3-*
+/test/dummy/log/*.log
+/test/dummy/storage/
+/test/dummy/tmp/
+
+# Test coverage
+/coverage/
+
+# Editor/backup artifacts
+*.bak
+*.diff.bak
+
+# Local reference material, not part of the gem
+/ref/
+
+# devenv/direnv local state
+/.devenv/
+/.devenv.flake.nix
+/.direnv/
+
+# E2E test outputs
+/e2e-tests/output/*.typ
+/e2e-tests/output/*.pdf

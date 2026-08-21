@@ -1,0 +1,25 @@
+<%# Test for text escaping helper %>
+<% special_chars = "#$*_[]\\<>{}@" %>
+<% price = "$100" %>
+<% hashtag = "#important" %>
+
+= Text Escaping Test
+
+== Special Characters
+Raw special characters: <%= escape_typst(special_chars) %>
+
+== Price Example
+The price is <%= escape_typst(price) %>
+
+== Hashtag Example
+This is <%= escape_typst(hashtag) %> information
+
+== Multiple Escapes in One Line
+Code <%= escape_typst("#define") %> and math <%= escape_typst("$x^2$") %>
+
+== Empty and Nil Handling
+Empty: <%= escape_typst("") %>
+Normal text: <%= escape_typst("Hello World") %>
+
+This document tests that all Typst special characters are properly escaped
+and don't interfere with document compilation.

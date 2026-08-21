@@ -1,0 +1,70 @@
+<%# Complex template testing multiple helpers together %>
+<%
+  # Simulate data from a web application
+  title = "Invoice #12345"
+  customer_name = "John Doe & Associates"
+  items = [
+    { name: "Web Development", price: "$5,000", description: "Building <strong>awesome</strong> websites" },
+    { name: "Consulting", price: "$2,500", description: "Strategic *planning* and advice" },
+    { name: "Support Package", price: "$1,200/month", description: "24/7 #premium support" }
+  ]
+
+  footer_html = <<~HTML
+    <p><strong>Terms:</strong> Payment due within 30 days.</p>
+    <p>For questions, visit <a href="https://example.com">our website</a>.</p>
+  HTML
+
+  company_info_md = <<~MD
+    ## Company Information
+    **Acme Corporation**
+    123 Main Street
+    _Anytown, USA 12345_
+  MD
+%>
+
+= <%= escape_typst(title) %>
+
+== Customer
+Name: <%= escape_typst(customer_name) %>
+
+== Invoice Items
+
+<% items.each_with_index do |item, index| %>
+*Item <%= index + 1 %>*: <%= escape_typst(item[:name]) %>
+
+Price: <%= escape_typst(item[:price]) %>
+
+Description: <%= html_to_typst(item[:description]) %>
+
+<% end %>
+
+== Company Details
+
+<%= markdown_to_typst(company_info_md) %>
+
+== Terms and Conditions
+
+<%= html_to_typst(footer_html) %>
+
+---
+
+_Document generated on <%= Time.now.strftime("%Y-%m-%d") %>_
+
+#pagebreak()
+
+== Testing URL Encoding
+
+Visit: `<%= url_encode("https://example.com/path?name=John Doe&id=123") %>`
+
+== Appendix: External Content
+
+<% appendix_path = File.join(__dir__, "../fixtures/sample.md") %>
+<%= include_markdown(appendix_path) %>
+
+This complex template demonstrates real-world usage combining multiple helpers:
+- Text escaping for user-generated content
+- HTML to Typst conversion for rich text
+- Markdown to Typst for formatted content
+- URL encoding for links
+- Including external Markdown files
+- ERB loops and conditionals
