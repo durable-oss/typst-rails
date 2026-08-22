@@ -3,6 +3,10 @@
 module TypstRails
   # Integration for Sinatra framework
   module SinatraIntegration
+    # Simple view context wrapper providing the `assigns` reader that
+    # Renderer expects, mirroring Rails' view context interface.
+    ViewContext = Struct.new(:assigns)
+
     def self.setup
       return unless defined?(::Sinatra)
 
@@ -17,7 +21,7 @@ module TypstRails
 
           # Sinatra doesn't have the same view context as Rails,
           # so we create a simple wrapper
-          view_context = OpenStruct.new(assigns: locals)
+          view_context = ::TypstRails::SinatraIntegration::ViewContext.new(locals)
           pdf_data = renderer.render(view_context, locals)
 
           content_type "application/pdf"

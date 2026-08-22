@@ -1,13 +1,14 @@
 # frozen_string_literal: true
 
-require "open3"
 require "tempfile"
 require "json"
 require "typst_rails/helpers"
+require "typst_rails/backends"
 
 # Only require ActiveSupport extensions if available
 begin
   require "active_support/core_ext/hash/keys" # for symbolize_keys
+  require "active_support/json" # for ActiveSupport::JSON, used by to_json below
   require "active_support/core_ext/object/json" # for as_json
 rescue LoadError
   # ActiveSupport not available, define minimal compatibility shims
@@ -51,6 +52,9 @@ module TypstRails
 
     # Maximum source size (10MB) to prevent memory issues
     MAX_SOURCE_SIZE = 10 * 1024 * 1024
+
+    # Holds the filesystem paths used during a single compilation run.
+    TempPaths = Struct.new(:typ_file, :dir, :data_file_path)
 
     # MARK: - Attributes
 
@@ -142,104 +146,80 @@ module TypstRails
       raise ArgumentError, "typst_source cannot be empty" if typst_source.nil? || typst_source.empty?
       raise ArgumentError, "data must be a Hash" unless data.is_a?(Hash)
 
-      output_pdf_path = nil
-      temp_typ_file = nil
-      output_temp_pdf_file = nil
-      temp_data_file_path = nil
-
+      paths = TempPaths.new
       begin
-        # Create temp file in a directory that Typst can access.
-        # Ensure it's in binary mode for writing source if it contains non-ASCII.
-        temp_typ_file = Tempfile.new(["durable_typst_template_", ".typ"], binmode: true)
-        temp_dir = File.dirname(temp_typ_file.path) # Directory for this temp file and related files.
-
-        temp_typ_file.write(typst_source)
-        temp_typ_file.flush # Ensure content is written before Typst reads it.
-        temp_typ_file.close # Close it so Typst can open it, especially important on Windows.
-
-        # Basic command structure. Configuration for executable path, font paths, etc.,
-        # would be integrated here, possibly from TypstRails.configuration.
-        cmd = %w[typst compile]
-
-        # Set the root directory for the Typst compilation, allowing relative imports
-        # (e.g., for the data file or other assets) from the temp directory.
-        cmd << "--root" << temp_dir
-
-        if data && !data.empty?
-          # Create a temporary JSON data file in the same directory as the Typst source.
-          # The Typst template would then use `json("typst_data.json")` to load this data.
-          temp_data_file_path = File.join(temp_dir, "typst_data.json")
-          begin
-            File.write(temp_data_file_path, data.to_json)
-          rescue JSON::GeneratorError => e
-            raise Error, "Failed to serialize data to JSON: #{e.message}"
-          rescue StandardError => e
-            raise Error, "Failed to write data file: #{e.message}"
-          end
-        end
-
-        # Add the path to the temporary Typst source file to the command.
-        cmd << temp_typ_file.path
-
-        # Prepare a temporary file for Typst's PDF output.
-        output_temp_pdf_file = Tempfile.new(["durable_typst_output_", ".pdf"], temp_dir, binmode: true)
-        output_temp_pdf_file.close # Close it so Typst can write to its path.
-        output_pdf_path = output_temp_pdf_file.path
-        cmd << output_pdf_path
-
-        begin
-          _stdout_str, stderr_str, status = Open3.capture3(*cmd)
-        rescue Errno::ENOENT => e
-          raise Error, "Typst executable not found. Please ensure Typst is installed and in your PATH. (#{e.message})"
-        rescue StandardError => e
-          raise Error, "Failed to execute Typst compiler: #{e.message}"
-        end
-
-        if status.success?
-          unless File.exist?(output_pdf_path)
-            raise Error, "Typst compilation succeeded but output file was not created"
-          end
-
-          pdf_data = File.binread(output_pdf_path)
-
-          raise Error, "Typst compilation produced an empty PDF" if pdf_data.empty?
-
-          pdf_data
-        else
-          error_message = "Typst compilation failed.\n"
-          error_message += "Command: #{cmd.join(" ")}\n" # Log the command for debugging.
-          error_message += "Stderr: #{stderr_str}" unless stderr_str.empty?
-          log_error(error_message)
-          raise Error, error_message # Raise a gem-specific error.
-        end
+        write_typst_source_file(paths, typst_source)
+        write_typst_data_file(paths, data)
+        run_typst_compiler(paths)
       rescue Error
-        # Re-raise our own errors
         raise
       rescue StandardError => e
-        # Catch and wrap unexpected errors
         error_message = "Unexpected error during Typst compilation: #{e.class} - #{e.message}"
         log_error(error_message)
         raise Error, error_message
       ensure
-        # Clean up all temporary files, suppressing any errors during cleanup
-        begin
-          temp_typ_file.unlink if temp_typ_file&.path && File.exist?(temp_typ_file.path)
-        rescue StandardError => e
-          warn "Failed to clean up temp Typst file: #{e.message}"
-        end
-
-        begin
-          output_temp_pdf_file.unlink if output_temp_pdf_file&.path && File.exist?(output_temp_pdf_file.path)
-        rescue StandardError => e
-          warn "Failed to clean up temp PDF file: #{e.message}"
-        end
-
-        begin
-          File.unlink(temp_data_file_path) if temp_data_file_path && File.exist?(temp_data_file_path)
-        rescue StandardError => e
-          warn "Failed to clean up temp data file: #{e.message}"
-        end
+        cleanup_temp_paths(paths)
       end
+    end
+
+    def write_typst_source_file(paths, typst_source)
+      # Create temp file in a directory that Typst can access.
+      # Ensure it's in binary mode for writing source if it contains non-ASCII.
+      paths.typ_file = Tempfile.new(["durable_typst_template_", ".typ"], binmode: true)
+      paths.dir = File.dirname(paths.typ_file.path)
+
+      paths.typ_file.write(typst_source)
+      paths.typ_file.flush # Ensure content is written before Typst reads it.
+      paths.typ_file.close # Close it so Typst can open it, especially important on Windows.
+    end
+
+    def write_typst_data_file(paths, data)
+      return if data.nil? || data.empty?
+
+      # Create a temporary JSON data file in the same directory as the Typst source.
+      # The Typst template would then use `json("typst_data.json")` to load this data.
+      paths.data_file_path = File.join(paths.dir, "typst_data.json")
+      File.write(paths.data_file_path, data.to_json)
+    rescue JSON::GeneratorError => e
+      raise Error, "Failed to serialize data to JSON: #{e.message}"
+    rescue StandardError => e
+      raise Error, "Failed to write data file: #{e.message}"
+    end
+
+    def run_typst_compiler(paths)
+      backend = Backends::Registry.resolve(configured_backend)
+      backend.compile(paths.typ_file.path, paths.dir)
+    rescue Error => e
+      log_error(e.message)
+      raise
+    end
+
+    # @return [Symbol, Backends::Base, nil] the backend preference from
+    #   TypstRails.configuration, or nil if the top-level TypstRails module
+    #   (and its Configuration) hasn't been loaded (e.g. when only
+    #   `typst_rails/renderer` is required directly).
+    def configured_backend
+      return nil unless TypstRails.respond_to?(:configuration)
+
+      TypstRails.configuration&.backend
+    end
+
+    def cleanup_temp_paths(paths)
+      # Clean up all temporary files, suppressing any errors during cleanup
+      rescue_cleanup_errors("temp Typst file") do
+        paths.typ_file.unlink if paths.typ_file&.path && File.exist?(paths.typ_file.path)
+      end
+      rescue_cleanup_errors("temp data file") { safe_unlink(paths.data_file_path) }
+    end
+
+    def safe_unlink(path)
+      File.unlink(path) if path && File.exist?(path)
+    end
+
+    def rescue_cleanup_errors(description)
+      yield
+    rescue StandardError => e
+      warn "Failed to clean up #{description}: #{e.message}"
     end
 
     # Collects data from view_context (instance variables) and local_assigns.
@@ -278,6 +258,8 @@ module TypstRails
       data.transform_values do |value|
         transform_value_for_json_serialization(value)
       end
+    rescue ArgumentError
+      raise
     rescue StandardError => e
       raise Error, "Failed to collect data for Typst template: #{e.message}"
     end
@@ -302,7 +284,7 @@ module TypstRails
     #   transform_value_for_json_serialization([Date.today, "text"])
     #   # => ["2024-01-15", "text"]
     def transform_value_for_json_serialization(value)
-      if defined?(::ActiveRecord::Base) && (value.is_a?(::ActiveRecord::Base) || (defined?(::ActiveRecord::Relation) && value.is_a?(::ActiveRecord::Relation)))
+      if active_record_value?(value)
         value.as_json # Use Rails' built-in JSON serialization for ActiveRecord objects.
       elsif value.is_a?(Date) || value.is_a?(Time) || value.is_a?(DateTime)
         value.iso8601 # Convert date/time objects to ISO8601 strings.
@@ -316,6 +298,14 @@ module TypstRails
       else
         value # Return other types as-is, assuming they are JSON-serializable.
       end
+    end
+
+    # @return [Boolean] whether +value+ is an ActiveRecord model or relation
+    def active_record_value?(value)
+      return false unless defined?(::ActiveRecord::Base)
+
+      value.is_a?(::ActiveRecord::Base) ||
+        (defined?(::ActiveRecord::Relation) && value.is_a?(::ActiveRecord::Relation))
     end
 
     # Logs an error message to the appropriate logger.

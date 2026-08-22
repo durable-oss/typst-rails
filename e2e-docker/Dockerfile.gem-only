@@ -1,0 +1,18 @@
+# Proves TypstRails uses the `typst` gem backend when it's bundled, with no
+# Typst executable installed anywhere on PATH.
+FROM ruby:3.4-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential libyaml-dev git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY . /app
+
+ENV BUNDLE_GEMFILE=/app/e2e-docker/Gemfile.gem-only
+RUN gem install bundler --no-document \
+    && bundle config set --local without 'development' \
+    && bundle install
+
+ENV EXPECT_BACKEND=gem
+CMD ["bundle", "exec", "ruby", "e2e-docker/scenarios/backend_smoke_test.rb"]

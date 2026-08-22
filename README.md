@@ -7,6 +7,7 @@ This gem is built with [The Durable Philosophy](#the-durable-philosophy) at its 
 ## Features
 
 - **Framework-Agnostic**: Works standalone or auto-integrates with Rails, Rage, and Sinatra
+- **Swappable Compilation Backends**: Prefers the `typst` gem when installed; falls back to shelling out to the Typst CLI
 - **Automatic Detection**: Zero configuration needed—just install and use
 - **Rails Template Handler**: Render `.typ` files like ERB templates
 - **Helper Methods**: Text escaping, HTML/Markdown conversion, URL encoding
@@ -189,6 +190,50 @@ TypstRails.configure do |config|
 end
 ```
 
+### Compilation Backends
+
+`TypstRails` compiles documents through a pluggable backend. Two backends ship
+with the gem:
+
+- **`:cli`** shells out to the `typst` executable. This is the original
+  approach and requires Typst to be [installed separately](https://typst.app/docs/tutorial/setup/)
+  and available on `PATH`.
+- **`:gem`** uses the [`typst`](https://rubygems.org/gems/typst) RubyGem, a
+  native extension that compiles in-process—no subprocess or separate Typst
+  install required. Add it to your Gemfile to enable it:
+
+  ```ruby
+  gem "typst"
+  ```
+
+By default (`config.backend = :auto`), TypstRails prefers the `typst` gem
+when it's installed and falls back to the CLI otherwise. Force a specific
+backend if you need to:
+
+```ruby
+TypstRails.configure do |config|
+  config.backend = :gem # or :cli
+end
+```
+
+You can also register your own backend—for example, to compile against a
+remote Typst service:
+
+```ruby
+class MyRemoteBackend < TypstRails::Backends::Base
+  def available?
+    true
+  end
+
+  def compile(typ_path, root_dir)
+    # ... return PDF bytes, or raise TypstRails::Error on failure
+  end
+end
+
+TypstRails::Backends::Registry.register(:my_remote, MyRemoteBackend.new)
+TypstRails.configure { |config| config.backend = :my_remote }
+```
+
 ## Testing
 
 The gem includes comprehensive testing at multiple levels:
@@ -233,6 +278,20 @@ E2E tests verify:
 - Complex real-world templates with multiple helpers
 
 See [e2e-tests/README.md](e2e-tests/README.md) for detailed documentation.
+
+### Docker End-to-End Tests
+
+**Requires Docker.**
+
+Verifies backend auto-detection (`:cli` vs `:gem`) across isolated container
+environments, and that the gem works correctly when built and installed like
+a real release rather than loaded from the working tree:
+
+```bash
+bundle exec rake e2e:docker
+```
+
+See [e2e-docker/README.md](e2e-docker/README.md) for detailed documentation.
 
 ### Code Coverage
 

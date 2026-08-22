@@ -46,6 +46,7 @@ Gem::Specification.new do |spec|
   # Runtime dependencies
   # No required dependencies - works with plain Ruby
   # Optional framework integrations will be loaded automatically if detected
+  spec.add_dependency "nokogiri", "~> 1.13"
   spec.add_dependency "reverse_markdown", "~> 2.0"
 
   # Development dependencies
@@ -55,5 +56,8 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency "mocha", "~> 2.0"
   spec.add_development_dependency "rake", ">= 12.0"
   spec.add_development_dependency "rubocop", "~> 1.50"
+  spec.add_development_dependency "rubocop-minitest", "~> 0.36"
+  spec.add_development_dependency "rubocop-rake", "~> 0.6"
   spec.add_development_dependency "simplecov", "~> 0.22"
+  spec.add_development_dependency "typst", ">= 0.15"
 end

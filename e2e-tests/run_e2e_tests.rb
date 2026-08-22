@@ -29,7 +29,7 @@ class E2ETestRunner
     setup_output_directory
   end
 
-  def run_all_tests
+  def run_all_tests # rubocop:disable Naming/PredicateMethod -- runs a suite with side effects; return value reports success
     puts "=" * 80
     puts "Running End-to-End Tests for Typst Rails"
     puts "=" * 80
@@ -65,37 +65,8 @@ class E2ETestRunner
     puts "-" * 80
 
     begin
-      # Read and process ERB template
-      erb_content = File.read(template_file)
-      processed_typst = process_erb(erb_content, template_file)
-
-      # Write intermediate Typst file for inspection
-      typst_file = @output_dir.join("#{test_name}.typ")
-      File.write(typst_file, processed_typst)
-      puts "✓ ERB processed successfully"
-      puts "  Typst source: #{typst_file}"
-
-      # Render to PDF using the actual Typst compiler
-      renderer = TypstRails::Renderer.new(processed_typst)
-      pdf_data = renderer.render(nil, {})
-
-      # Write PDF output
-      pdf_file = @output_dir.join("#{test_name}.pdf")
-      File.binwrite(pdf_file, pdf_data)
-
-      # Verify PDF was created and has content
-      file_size = File.size(pdf_file)
-      puts "✓ PDF generated successfully"
-      puts "  PDF output: #{pdf_file}"
-      puts "  File size: #{file_size} bytes"
-
-      raise "PDF file is suspiciously small (#{file_size} bytes)" if file_size < 100
-
-      # Check if PDF is valid by reading magic bytes
-      magic = File.binread(pdf_file, 4)
-      raise "Invalid PDF file (missing %PDF header)" unless magic == "%PDF"
-
-      puts "✓ PDF validation passed"
+      typst_source = write_typst_source(test_name, template_file)
+      write_and_validate_pdf(test_name, typst_source)
 
       record_result(test_name, :passed, "Test completed successfully")
       puts "✅ #{test_name} PASSED"
@@ -118,15 +89,45 @@ class E2ETestRunner
     puts
   end
 
+  def write_typst_source(test_name, template_file)
+    erb_content = File.read(template_file)
+    processed_typst = process_erb(erb_content, template_file)
+
+    typst_file = @output_dir.join("#{test_name}.typ")
+    File.write(typst_file, processed_typst)
+    puts "✓ ERB processed successfully"
+    puts "  Typst source: #{typst_file}"
+
+    processed_typst
+  end
+
+  def write_and_validate_pdf(test_name, typst_source)
+    renderer = TypstRails::Renderer.new(typst_source)
+    pdf_data = renderer.render(nil, {})
+
+    pdf_file = @output_dir.join("#{test_name}.pdf")
+    File.binwrite(pdf_file, pdf_data)
+
+    file_size = File.size(pdf_file)
+    puts "✓ PDF generated successfully"
+    puts "  PDF output: #{pdf_file}"
+    puts "  File size: #{file_size} bytes"
+
+    raise "PDF file is suspiciously small (#{file_size} bytes)" if file_size < 100
+
+    magic = File.binread(pdf_file, 4)
+    raise "Invalid PDF file (missing %PDF header)" unless magic == "%PDF"
+
+    puts "✓ PDF validation passed"
+  end
+
   def process_erb(erb_content, template_path)
-    # Create ERB instance with the template
     erb = ERB.new(erb_content, trim_mode: "-")
 
-    # Set __dir__ for the template context
+    # Expose __dir__ to the template as a local variable without eval.
     binding_with_dir = binding
-    eval("__dir__ = '#{File.dirname(template_path)}'", binding_with_dir, __FILE__, __LINE__)
+    binding_with_dir.local_variable_set(:__dir__, File.dirname(template_path))
 
-    # Process the ERB template
     erb.result(binding_with_dir)
   rescue StandardError => e
     raise TypstRails::Error, "ERB processing failed: #{e.message}"
@@ -145,32 +146,30 @@ class E2ETestRunner
     puts "Test Summary"
     puts "=" * 80
 
+    print_summary_counts
+    print_results_for_status(:failed, "Failed tests:")
+    print_results_for_status(:skipped, "Skipped tests:")
+  end
+
+  def print_summary_counts
     passed = @results.count { |r| r[:status] == :passed }
     failed = @results.count { |r| r[:status] == :failed }
     skipped = @results.count { |r| r[:status] == :skipped }
-    total = @results.length
 
     puts
-    puts "Total:   #{total}"
+    puts "Total:   #{@results.length}"
     puts "Passed:  #{passed} ✅"
     puts "Failed:  #{failed} ❌"
     puts "Skipped: #{skipped} ⚠️"
     puts
+  end
 
-    if failed.positive?
-      puts "Failed tests:"
-      @results.select { |r| r[:status] == :failed }.each do |result|
-        puts "  - #{result[:name]}: #{result[:message]}"
-      end
-      puts
-    end
+  def print_results_for_status(status, heading)
+    matching = @results.select { |r| r[:status] == status }
+    return if matching.empty?
 
-    return unless skipped.positive?
-
-    puts "Skipped tests:"
-    @results.select { |r| r[:status] == :skipped }.each do |result|
-      puts "  - #{result[:name]}: #{result[:message]}"
-    end
+    puts heading
+    matching.each { |result| puts "  - #{result[:name]}: #{result[:message]}" }
     puts
   end
 

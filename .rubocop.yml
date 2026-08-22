@@ -1,3 +1,7 @@
+plugins:
+  - rubocop-minitest
+  - rubocop-rake
+
 AllCops:
   TargetRubyVersion: 2.7
   NewCops: enable
@@ -34,6 +38,7 @@ Metrics/BlockLength:
     - 'test/**/*'
     - 'Rakefile'
     - '**/*.rake'
+    - '**/*.gemspec'
 
 Layout/LineLength:
   Max: 120
@@ -54,3 +59,8 @@ Metrics/PerceivedComplexity:
 Style/FrozenStringLiteralComment:
   Enabled: true
   EnforcedStyle: always
+
+# Durable Programming gem convention keeps development dependencies in the
+# gemspec (spec.add_development_dependency) rather than the Gemfile.
+Gemspec/DevelopmentDependencies:
+  Enabled: false

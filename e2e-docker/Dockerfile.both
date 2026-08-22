@@ -1,0 +1,26 @@
+# Proves that when both the `typst` gem and the Typst CLI executable are
+# available, auto-detection prefers the gem backend (in-process, no subprocess).
+FROM ruby:3.4-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      curl ca-certificates xz-utils build-essential libyaml-dev git \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG TYPST_VERSION=0.13.1
+RUN curl -fsSL "https://github.com/typst/typst/releases/download/v${TYPST_VERSION}/typst-x86_64-unknown-linux-musl.tar.xz" \
+      -o /tmp/typst.tar.xz \
+    && tar -xf /tmp/typst.tar.xz -C /tmp \
+    && mv /tmp/typst-x86_64-unknown-linux-musl/typst /usr/local/bin/typst \
+    && rm -rf /tmp/typst.tar.xz /tmp/typst-x86_64-unknown-linux-musl \
+    && typst --version
+
+WORKDIR /app
+COPY . /app
+
+ENV BUNDLE_GEMFILE=/app/e2e-docker/Gemfile.gem-only
+RUN gem install bundler --no-document \
+    && bundle config set --local without 'development' \
+    && bundle install
+
+ENV EXPECT_BACKEND=gem
+CMD ["bundle", "exec", "ruby", "e2e-docker/scenarios/backend_smoke_test.rb"]

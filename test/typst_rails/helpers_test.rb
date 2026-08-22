@@ -34,7 +34,7 @@ module TypstRails
     end
 
     def test_escape_typst_with_multiple_special_chars
-      assert_equal "\\#\\$\\*\\_\\[\\]\\\\", escape_typst("#{$ARGV}_[]\\")
+      assert_equal "\\#\\$\\*\\_\\[\\]\\\\", escape_typst('#$*_[]\\')
     end
 
     def test_escape_typst_with_nil
@@ -55,32 +55,38 @@ module TypstRails
     # Tests for html_to_markdown
     def test_html_to_markdown_with_heading
       result = html_to_markdown("<h1>Title</h1>")
+
       assert_includes result, "Title"
     end
 
     def test_html_to_markdown_with_paragraph
       result = html_to_markdown("<p>Hello world</p>")
+
       assert_includes result, "Hello world"
     end
 
     def test_html_to_markdown_with_bold
       result = html_to_markdown("<strong>Bold text</strong>")
+
       assert_includes result, "**Bold text**"
     end
 
     def test_html_to_markdown_with_italic
       result = html_to_markdown("<em>Italic text</em>")
+
       assert_includes result, "_Italic text_"
     end
 
     def test_html_to_markdown_with_link
       result = html_to_markdown('<a href="https://example.com">Link</a>')
+
       assert_includes result, "[Link](https://example.com)"
     end
 
     def test_html_to_markdown_with_list
       html = "<ul><li>Item 1</li><li>Item 2</li></ul>"
       result = html_to_markdown(html)
+
       assert_includes result, "Item 1"
       assert_includes result, "Item 2"
     end
@@ -105,6 +111,16 @@ module TypstRails
         html_to_markdown("<p>Test</p>", "not a hash")
       end
       assert_equal "options must be a Hash", error.message
+    end
+
+    def test_html_to_markdown_wraps_conversion_failure
+      ReverseMarkdown.stubs(:convert).raises(StandardError.new("parser exploded"))
+
+      error = assert_raises(Error) do
+        html_to_markdown("<p>Test</p>")
+      end
+      assert_includes error.message, "Failed to convert HTML to Markdown"
+      assert_includes error.message, "parser exploded"
     end
 
     # Tests for markdown_to_typst
@@ -138,11 +154,13 @@ module TypstRails
 
     def test_markdown_to_typst_converts_links
       result = markdown_to_typst("[text](https://example.com)")
+
       assert_equal '#link("https://example.com")[text]', result
     end
 
     def test_markdown_to_typst_converts_images
       result = markdown_to_typst("![alt text](image.png)")
+
       assert_equal '#image("image.png")', result
     end
 
@@ -163,22 +181,26 @@ module TypstRails
 
     def test_markdown_to_typst_preserves_code_blocks
       result = markdown_to_typst("`code`")
+
       assert_equal "`code`", result
     end
 
     # Tests for html_to_typst
     def test_html_to_typst_converts_heading
       result = html_to_typst("<h1>Title</h1>")
+
       assert_includes result, "= Title"
     end
 
     def test_html_to_typst_converts_bold
       result = html_to_typst("<strong>Bold</strong>")
+
       assert_includes result, "*Bold*"
     end
 
     def test_html_to_typst_converts_link
       result = html_to_typst('<a href="https://example.com">Link</a>')
+
       assert_includes result, '#link("https://example.com")[Link]'
     end
 
@@ -191,6 +213,7 @@ module TypstRails
 
       begin
         result = include_markdown(file.path)
+
         assert_includes result, "= Title"
         assert_includes result, "*bold*"
       ensure
@@ -219,6 +242,16 @@ module TypstRails
       assert_includes error.message, "Markdown file not found"
     end
 
+    def test_include_markdown_wraps_unexpected_read_failure
+      File.stubs(:read).raises(StandardError.new("disk exploded"))
+
+      error = assert_raises(Error) do
+        include_markdown("some_file.md")
+      end
+      assert_includes error.message, "Failed to read Markdown file some_file.md"
+      assert_includes error.message, "disk exploded"
+    end
+
     def test_include_markdown_with_permission_denied
       skip "Skipping permission test on this platform" if RUBY_PLATFORM =~ /mswin|mingw|windows/
 
@@ -242,6 +275,7 @@ module TypstRails
     def test_sanitize_html_removes_script_tags
       html = '<script>alert("xss")</script><p>Safe content</p>'
       result = sanitize_html(html)
+
       refute_includes result, "script"
       assert_includes result, "Safe content"
     end
@@ -249,6 +283,7 @@ module TypstRails
     def test_sanitize_html_removes_style_tags
       html = "<style>body{color:red;}</style><p>Content</p>"
       result = sanitize_html(html)
+
       refute_includes result, "style"
       assert_includes result, "Content"
     end
@@ -256,6 +291,7 @@ module TypstRails
     def test_sanitize_html_removes_event_handlers
       html = '<div onclick="alert(1)">Click me</div>'
       result = sanitize_html(html)
+
       refute_includes result, "onclick"
       assert_includes result, "Click me"
     end
@@ -278,8 +314,42 @@ module TypstRails
     def test_sanitize_html_preserves_safe_tags
       html = "<h1>Title</h1><p>Content</p>"
       result = sanitize_html(html)
+
       assert_includes result, "Title"
       assert_includes result, "Content"
+    end
+
+    def test_sanitize_html_respects_custom_allowed_tags
+      html = "<p>Text</p><img src='x'>"
+      result = sanitize_html(html, allowed_tags: %w[p])
+
+      assert_includes result, "<p>Text</p>"
+      refute_includes result, "<img"
+    end
+
+    def test_sanitize_html_strips_disallowed_tags_by_default_keeping_text
+      html = "<div>Wrapped</div>"
+      result = sanitize_html(html)
+
+      refute_includes result, "<div"
+      assert_includes result, "Wrapped"
+    end
+
+    def test_sanitize_html_respects_custom_allowed_attributes
+      html = "<a href='https://example.com' title='t' data-x='y'>link</a>"
+      result = sanitize_html(html, allowed_attributes: %w[href])
+
+      assert_includes result, 'href="https://example.com"'
+      refute_includes result, "title="
+      refute_includes result, "data-x="
+    end
+
+    def test_sanitize_html_strips_default_disallowed_attributes
+      html = "<img src='x.png' data-evil='1'>"
+      result = sanitize_html(html)
+
+      assert_includes result, 'src="x.png"'
+      refute_includes result, "data-evil"
     end
 
     # Tests for url_encode
@@ -308,6 +378,7 @@ module TypstRails
 
     def test_url_encode_handles_unicode
       result = url_encode("こんにちは")
+
       refute_equal "こんにちは", result
       assert_includes result, "%"
     end

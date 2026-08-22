@@ -45,6 +45,7 @@ module TypstRails
     def test_compile_raises_error_when_typst_not_found
       renderer = Renderer.new("= Test")
 
+      force_cli_backend!
       Open3.stubs(:capture3).raises(Errno::ENOENT.new("typst"))
 
       error = assert_raises(Error) do
@@ -53,6 +54,20 @@ module TypstRails
 
       assert_includes error.message, "Typst executable not found"
       assert_includes error.message, "Please ensure Typst is installed"
+    end
+
+    def test_compile_raises_error_when_execution_fails_unexpectedly
+      renderer = Renderer.new("= Test")
+
+      force_cli_backend!
+      Open3.stubs(:capture3).raises(StandardError.new("boom"))
+
+      error = assert_raises(Error) do
+        renderer.render(nil, {})
+      end
+
+      assert_includes error.message, "Failed to execute Typst compiler"
+      assert_includes error.message, "boom"
     end
 
     def test_compile_raises_error_on_compilation_failure
@@ -72,6 +87,7 @@ module TypstRails
       renderer = Renderer.new("= Test")
 
       # Mock successful status but don't create the output file
+      force_cli_backend!
       Open3.stubs(:capture3).returns(["", "", mock_status(true)])
 
       error = assert_raises(Error) do
@@ -85,6 +101,7 @@ module TypstRails
       renderer = Renderer.new("= Test")
 
       # Mock successful compilation but empty PDF
+      force_cli_backend!
       Open3.stubs(:capture3).with do |*args|
         output_path = args.last
         File.binwrite(output_path, "") if output_path.end_with?(".pdf")
@@ -154,6 +171,60 @@ module TypstRails
       end
 
       assert_equal "local_assigns must be a Hash", error.message
+    end
+
+    def test_collect_data_wraps_unexpected_errors
+      renderer = Renderer.new("= Test")
+      view_context = mock("view_context")
+      view_context.stubs(:respond_to?).with(:assigns).returns(true)
+      view_context.stubs(:assigns).raises(StandardError.new("assigns exploded"))
+
+      error = assert_raises(Error) do
+        renderer.send(:collect_data_for_typst, view_context, {})
+      end
+
+      assert_includes error.message, "Failed to collect data for Typst template"
+      assert_includes error.message, "assigns exploded"
+    end
+
+    def test_cleanup_continues_despite_output_pdf_unlink_failure
+      renderer = Renderer.new("= Test")
+
+      mock_successful_typst_compilation
+
+      original_unlink = File.method(:unlink)
+      File.stubs(:unlink).with do |path|
+        if path.end_with?("_output.pdf")
+          true
+        else
+          original_unlink.call(path)
+          false
+        end
+      end.raises(Errno::EACCES.new("Permission denied"))
+
+      assert_output(nil, /Failed to clean up temp PDF file/) do
+        renderer.render(nil, {})
+      end
+    end
+
+    def test_cleanup_continues_despite_data_file_unlink_failure
+      renderer = Renderer.new("= Test")
+
+      mock_successful_typst_compilation
+
+      original_unlink = File.method(:unlink)
+      File.stubs(:unlink).with do |path|
+        if path.end_with?("typst_data.json")
+          true
+        else
+          original_unlink.call(path)
+          false
+        end
+      end.raises(Errno::EACCES.new("Permission denied"))
+
+      assert_output(nil, /Failed to clean up temp data file/) do
+        renderer.render(nil, { title: "Test" })
+      end
     end
 
     def test_cleanup_continues_despite_errors

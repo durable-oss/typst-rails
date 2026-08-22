@@ -2,6 +2,7 @@ PATH
   remote: .
   specs:
     typst-rails (0.1.0)
+      nokogiri (~> 1.13)
       reverse_markdown (~> 2.0)
 
 GEM
@@ -75,6 +76,9 @@ GEM
     rack (3.1.16)
     rainbow (3.1.1)
     rake (13.3.0)
+    rake-compiler-dock (1.12.0)
+    rb_sys (0.9.129)
+      rake-compiler-dock (= 1.12.0)
     regexp_parser (2.11.3)
     reverse_markdown (2.1.1)
       nokogiri
@@ -92,6 +96,10 @@ GEM
     rubocop-ast (1.48.0)
       parser (>= 3.3.7.2)
       prism (~> 1.4)
+    rubocop-minitest (0.40.0)
+      lint_roller (~> 1.1)
+      rubocop (>= 1.75.0, < 2.0)
+      rubocop-ast (>= 1.38.0, < 2.0)
     rubocop-performance (1.26.1)
       lint_roller (~> 1.1)
       rubocop (>= 1.75.0, < 2.0)
@@ -106,8 +114,12 @@ GEM
       rubocop (>= 1.72)
       rubocop-performance (>= 1.24)
       rubocop-rails (>= 2.30)
+    rubocop-rake (0.7.1)
+      lint_roller (~> 1.1)
+      rubocop (>= 1.72.1)
     ruby-progressbar (1.13.0)
     ruby2_keywords (0.0.5)
+    rubyzip (3.5.0)
     securerandom (0.4.1)
     simplecov (0.22.0)
       docile (~> 1.1)
@@ -117,6 +129,21 @@ GEM
     simplecov_json_formatter (0.1.4)
     sqlite3 (2.8.0)
       mini_portile2 (~> 2.8.0)
+    typst (0.15.1.5)
+      rb_sys (~> 0.9, >= 0.9.128)
+      rubyzip (~> 3.2)
+    typst (0.15.1.5-aarch64-linux)
+      rubyzip (~> 3.2)
+    typst (0.15.1.5-aarch64-linux-musl)
+      rubyzip (~> 3.2)
+    typst (0.15.1.5-arm64-darwin)
+      rubyzip (~> 3.2)
+    typst (0.15.1.5-x86_64-darwin)
+      rubyzip (~> 3.2)
+    typst (0.15.1.5-x86_64-linux)
+      rubyzip (~> 3.2)
+    typst (0.15.1.5-x86_64-linux-musl)
+      rubyzip (~> 3.2)
     tzinfo (2.0.6)
       concurrent-ruby (~> 1.0)
     unicode-display_width (3.2.0)
@@ -141,9 +168,12 @@ DEPENDENCIES
   puma
   rake (>= 12.0)
   rubocop (~> 1.50)
+  rubocop-minitest (~> 0.36)
   rubocop-rails-omakase
+  rubocop-rake (~> 0.6)
   simplecov (~> 0.22)
   sqlite3
+  typst (>= 0.15)
   typst-rails!
 
 BUNDLED WITH

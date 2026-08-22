@@ -1,7 +1,8 @@
 # frozen_string_literal: true
 
-require 'cgi'
-require 'reverse_markdown'
+require "cgi"
+require "nokogiri"
+require "reverse_markdown"
 
 module TypstRails
   # Helper methods for working with Typst templates.
@@ -64,7 +65,7 @@ module TypstRails
 
       # Escape special Typst characters
       # See: https://typst.app/docs/reference/syntax/
-      text.gsub(/([#$*_\[\]\\<>{}@])/, '\\\\\1')
+      text.gsub(/([#\$*_\[\]\\<>{}@])/, '\\\\\1')
     end
 
     # MARK: - HTML Conversion
@@ -175,29 +176,35 @@ module TypstRails
       # # Title -> = Title
       # ## Subtitle -> == Subtitle
       # etc.
-      result.gsub!(/^(#{Regexp.quote('#')}{1,6})\s+(.+)$/) do
-        "=" * Regexp.last_match(1).length + " " + Regexp.last_match(2)
+      result.gsub!(/^(#{Regexp.quote("#")}{1,6})\s+(.+)$/) do
+        "#{"=" * Regexp.last_match(1).length} #{Regexp.last_match(2)}"
       end
 
-      # Convert Markdown bold to Typst bold
+      # Convert Markdown bold to Typst bold, using placeholder bytes (\x01 text \x02)
+      # so the italic pass below doesn't re-convert the resulting *text* markers.
       # **text** or __text__ -> *text*
-      result.gsub!(/(\*\*|__)(.+?)\1/, '*\2*')
+      result.gsub!(/(\*\*|__)(.+?)\1/, "\x01\\2\x02")
 
       # Convert Markdown italic to Typst italic (underscore style)
       # *text* or _text_ -> _text_
       result.gsub!(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/, '_\1_')
       result.gsub!(/(?<!_)_(?!_)(.+?)(?<!_)_(?!_)/, '_\1_')
 
+      # Replace bold placeholders with Typst bold markers
+      result.gsub!("\x01", "*")
+      result.gsub!("\x02", "*")
+
       # Convert Markdown code to Typst code
       # `code` -> `code` (same in Typst)
+
+      # Convert Markdown images (must run before links, since ![alt](url)
+      # would otherwise be matched by the link pattern below)
+      # ![alt](url) -> #image("url")
+      result.gsub!(/!\[([^\]]*)\]\(([^)]+)\)/, '#image("\2")')
 
       # Convert Markdown links
       # [text](url) -> #link("url")[text]
       result.gsub!(/\[([^\]]+)\]\(([^)]+)\)/, '#link("\2")[\1]')
-
-      # Convert Markdown images
-      # ![alt](url) -> #image("url")
-      result.gsub!(/!\[([^\]]*)\]\(([^)]+)\)/, '#image("\2")')
 
       result
     end
@@ -231,9 +238,9 @@ module TypstRails
       begin
         markdown_content = File.read(markdown_path)
         markdown_to_typst(markdown_content)
-      rescue Errno::ENOENT => e
+      rescue Errno::ENOENT
         raise Error, "Markdown file not found: #{markdown_path}"
-      rescue Errno::EACCES => e
+      rescue Errno::EACCES
         raise Error, "Permission denied reading Markdown file: #{markdown_path}"
       rescue StandardError => e
         raise Error, "Failed to read Markdown file #{markdown_path}: #{e.message}"
@@ -241,6 +248,14 @@ module TypstRails
     end
 
     # MARK: - HTML Sanitization
+
+    DEFAULT_ALLOWED_TAGS = %w[
+      h1 h2 h3 h4 h5 h6 p br strong em u s del ins
+      ul ol li blockquote pre code a img table thead
+      tbody tr th td
+    ].freeze
+
+    DEFAULT_ALLOWED_ATTRIBUTES = %w[href src alt title].freeze
 
     # Sanitizes HTML before conversion to prevent XSS attacks.
     #
@@ -274,23 +289,36 @@ module TypstRails
       return "" if html.nil?
       raise ArgumentError, "html must be a String" unless html.is_a?(String)
 
-      # Default allowed tags for documentation/content
-      allowed_tags ||= %w[
-        h1 h2 h3 h4 h5 h6 p br strong em u s del ins
-        ul ol li blockquote pre code a img table thead
-        tbody tr th td
-      ]
+      allowed_tags ||= DEFAULT_ALLOWED_TAGS
+      allowed_attributes ||= DEFAULT_ALLOWED_ATTRIBUTES
 
-      # Default allowed attributes
-      allowed_attributes ||= %w[href src alt title]
-
-      # Simple sanitization: strip disallowed tags
-      result = html.gsub(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/im, '')
-      result = result.gsub(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/im, '')
-      result = result.gsub(/on\w+\s*=\s*["'][^"']*["']/i, '') # Remove event handlers
-
-      result
+      fragment = Nokogiri::HTML5.fragment(html)
+      strip_disallowed_nodes(fragment, allowed_tags, allowed_attributes)
+      fragment.to_html
     end
+
+    private
+
+    # Recursively removes tags not in +allowed_tags+ (keeping their text content)
+    # and strips attributes not in +allowed_attributes+ from the tags that remain.
+    def strip_disallowed_nodes(node, allowed_tags, allowed_attributes)
+      node.children.each do |child|
+        next strip_disallowed_nodes(child, allowed_tags, allowed_attributes) unless child.element?
+
+        unless allowed_tags.include?(child.name.downcase)
+          child.replace(child.children)
+          next strip_disallowed_nodes(node, allowed_tags, allowed_attributes)
+        end
+
+        child.attribute_nodes.each do |attr|
+          attr.remove unless allowed_attributes.include?(attr.name.downcase)
+        end
+
+        strip_disallowed_nodes(child, allowed_tags, allowed_attributes)
+      end
+    end
+
+    public
 
     # MARK: - URL Encoding
 

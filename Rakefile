@@ -30,6 +30,38 @@ task :clean_e2e do
   end
 end
 
+DOCKER_E2E_SCENARIOS = %w[cli-only gem-only both neither fresh-install].freeze
+
+namespace :e2e do
+  desc "Run Docker-based E2E tests (backend matrix + fresh install)"
+  task :docker do
+    require "open3"
+
+    compose_dir = File.join(__dir__, "e2e-docker")
+    puts "Building Docker E2E images (this can take a while the first time)..."
+    build_out, build_status = Open3.capture2e("docker", "compose", "build", chdir: compose_dir)
+    unless build_status.success?
+      puts build_out
+      abort "docker compose build failed"
+    end
+
+    results = DOCKER_E2E_SCENARIOS.to_h do |scenario|
+      print "  #{scenario}... "
+      $stdout.flush
+      output, status = Open3.capture2e("docker", "compose", "run", "--rm", scenario, chdir: compose_dir)
+      puts status.success? ? "PASS" : "FAIL"
+      puts output.lines.map { |l| "    #{l}" }.join unless status.success?
+      [scenario, status.success?]
+    end
+
+    Open3.capture2e("docker", "compose", "down", "--remove-orphans", chdir: compose_dir)
+
+    puts
+    puts "Docker E2E summary: #{results.count { |_, ok| ok }}/#{results.size} passed"
+    abort "Docker E2E failures: #{results.reject { |_, ok| ok }.keys.join(", ")}" if results.value?(false)
+  end
+end
+
 desc "Run all tests (unit + E2E)"
 task test_all: %i[test e2e]
 

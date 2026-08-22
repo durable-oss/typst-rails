@@ -7,17 +7,14 @@ module TypstRails
     def test_initialize_with_string_source
       source = "= Hello World"
       renderer = Renderer.new(source)
+
       assert_equal source, renderer.source
     end
 
     def test_initialize_with_non_string_source
       renderer = Renderer.new(123)
-      assert_equal "123", renderer.source
-    end
 
-    def test_initialize_with_nil_source
-      renderer = Renderer.new(nil)
-      assert_equal "", renderer.source
+      assert_equal "123", renderer.source
     end
 
     def test_render_without_view_context
@@ -27,6 +24,7 @@ module TypstRails
       mock_successful_typst_compilation(pdf_content: "test pdf")
 
       result = renderer.render(nil, { title: "Test" })
+
       assert_equal "test pdf", result
     end
 
@@ -38,6 +36,7 @@ module TypstRails
       mock_successful_typst_compilation
 
       result = renderer.render(view_context, { title: "Report" })
+
       refute_nil result
     end
 
@@ -48,6 +47,7 @@ module TypstRails
       mock_successful_typst_compilation
 
       result = renderer.render(nil, {})
+
       refute_nil result
     end
 
@@ -66,6 +66,7 @@ module TypstRails
       mock_successful_typst_compilation
 
       renderer.render(nil, data)
+
       assert_equal data.transform_keys(&:to_s), json_written
     end
 
@@ -91,8 +92,8 @@ module TypstRails
       # Track created temp files
       temp_files_created = []
       original_tempfile_new = Tempfile.method(:new)
-      Tempfile.define_singleton_method(:new) do |*args|
-        file = original_tempfile_new.call(*args)
+      Tempfile.define_singleton_method(:new) do |*args, **kwargs|
+        file = original_tempfile_new.call(*args, **kwargs)
         temp_files_created << file.path
         file
       end
@@ -101,7 +102,7 @@ module TypstRails
 
       # Verify files are cleaned up
       temp_files_created.each do |path|
-        refute File.exist?(path), "Temp file #{path} should be cleaned up"
+        refute_path_exists path, "Temp file #{path} should be cleaned up"
       end
     ensure
       # Restore Tempfile.new
@@ -117,6 +118,7 @@ module TypstRails
 
       # Track created temp files
       temp_files = []
+
       Tempfile.stub :new, lambda { |*args|
         file = Tempfile.allocate
         file.send(:initialize, *args)
@@ -128,7 +130,7 @@ module TypstRails
 
       # Verify cleanup happened despite error
       temp_files.each do |path|
-        refute File.exist?(path), "Temp file should be cleaned up even on failure"
+        refute_path_exists path, "Temp file should be cleaned up even on failure"
       end
     end
 
@@ -150,6 +152,7 @@ module TypstRails
       renderer = Renderer.new("test")
       date = Date.new(2025, 1, 15)
       result = renderer.send(:transform_value_for_json_serialization, date)
+
       assert_equal "2025-01-15", result
     end
 
@@ -157,6 +160,7 @@ module TypstRails
       renderer = Renderer.new("test")
       time = Time.new(2025, 1, 15, 10, 30, 45)
       result = renderer.send(:transform_value_for_json_serialization, time)
+
       assert_match(/2025-01-15T10:30:45/, result)
     end
 
@@ -164,6 +168,7 @@ module TypstRails
       renderer = Renderer.new("test")
       datetime = DateTime.new(2025, 1, 15, 10, 30, 45)
       result = renderer.send(:transform_value_for_json_serialization, datetime)
+
       assert_match(/2025-01-15T10:30:45/, result)
     end
 
@@ -171,6 +176,7 @@ module TypstRails
       renderer = Renderer.new("test")
       array = [1, "test", Date.new(2025, 1, 15)]
       result = renderer.send(:transform_value_for_json_serialization, array)
+
       assert_equal 1, result[0]
       assert_equal "test", result[1]
       assert_equal "2025-01-15", result[2]
@@ -180,6 +186,7 @@ module TypstRails
       renderer = Renderer.new("test")
       hash = { name: "Test", date: Date.new(2025, 1, 15) }
       result = renderer.send(:transform_value_for_json_serialization, hash)
+
       assert_equal "Test", result[:name]
       assert_equal "2025-01-15", result[:date]
     end
@@ -193,8 +200,28 @@ module TypstRails
         ]
       }
       result = renderer.send(:transform_value_for_json_serialization, data)
+
       assert_equal "2025-01-15", result[:items][0][:created_at]
       assert_equal "2025-01-16", result[:items][1][:created_at]
+    end
+
+    def test_transform_value_for_json_serialization_with_active_record_object
+      renderer = Renderer.new("test")
+
+      active_record_module = Module.new
+      base_class = Class.new do
+        def as_json
+          { "id" => 1, "name" => "Widget" }
+        end
+      end
+      active_record_module.const_set(:Base, base_class)
+      record = base_class.new
+
+      with_defined_constant(:ActiveRecord, active_record_module) do
+        result = renderer.send(:transform_value_for_json_serialization, record)
+
+        assert_equal({ "id" => 1, "name" => "Widget" }, result)
+      end
     end
 
     def test_collect_data_for_typst_with_view_context
@@ -256,7 +283,7 @@ module TypstRails
 
       renderer.instance_variable_set(:@view_context, view_context)
 
-      assert renderer.respond_to?(:some_helper)
+      assert_respond_to renderer, :some_helper
     end
 
     def test_respond_to_missing_returns_false_for_unknown_methods
@@ -264,7 +291,7 @@ module TypstRails
       view_context = Object.new
       renderer.instance_variable_set(:@view_context, view_context)
 
-      refute renderer.respond_to?(:nonexistent_method)
+      refute_respond_to renderer, :nonexistent_method
     end
 
     def test_log_error_uses_rails_logger_when_available

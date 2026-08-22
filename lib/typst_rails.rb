@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "typst_rails/version"
+require "typst_rails/backends"
 require "typst_rails/renderer"
 require "typst_rails/framework_detection"
 
@@ -41,8 +42,8 @@ module TypstRails
 
   # Configures the Typst integration.
   #
-  # This method yields a Configuration object for modification. If no
-  # configuration exists, a new one is created with default values.
+  # This method creates a new Configuration with default values and yields
+  # it for modification. Each call replaces any previous configuration.
   #
   # @yield [configuration] Yields the configuration object for modification
   # @yieldparam configuration [Configuration] The configuration instance to modify
@@ -58,10 +59,15 @@ module TypstRails
   #   TypstRails.configure do |config|
   #     config.default_root_path = Rails.root.join("app", "typst")
   #   end
+  #
+  # @example Force a specific compilation backend
+  #   TypstRails.configure do |config|
+  #     config.backend = :gem # or :cli
+  #   end
   def self.configure
     raise ArgumentError, "Block required for configuration" unless block_given?
 
-    self.configuration ||= Configuration.new
+    self.configuration = Configuration.new
     yield(configuration)
     configuration.validate!
     configuration
@@ -84,11 +90,19 @@ module TypstRails
     # @return [String, nil] Default root path for Typst template resolution
     attr_accessor :default_root_path
 
+    # @return [Symbol, TypstRails::Backends::Base] Which compilation backend to use.
+    #   `:auto` (the default) prefers the `typst` gem when installed, otherwise falls
+    #   back to shelling out to the `typst` CLI. Set to `:gem` or `:cli` to force a
+    #   specific built-in backend, or assign a custom backend instance registered
+    #   via {TypstRails::Backends::Registry.register}.
+    attr_accessor :backend
+
     # Initializes a new Configuration with default values.
     #
     # Default values:
     # - `typst_executable_path`: "typst" (assumes typst is in PATH)
     # - `default_root_path`: nil (uses temporary directory)
+    # - `backend`: `:auto` (prefer the `typst` gem, fall back to the CLI)
     #
     # @return [Configuration] A new configuration instance
     #
@@ -96,9 +110,11 @@ module TypstRails
     #   config = TypstRails::Configuration.new
     #   config.typst_executable_path #=> "typst"
     #   config.default_root_path #=> nil
+    #   config.backend #=> :auto
     def initialize
       @typst_executable_path = "typst"
       @default_root_path = nil
+      @backend = :auto
     end
 
     # Validates the configuration settings.
@@ -115,14 +131,10 @@ module TypstRails
     #   config = Configuration.new
     #   config.typst_executable_path = ""
     #   config.validate! # Raises ArgumentError
-    def validate!
-      if typst_executable_path.nil? || typst_executable_path.empty?
-        raise ArgumentError, "typst_executable_path cannot be nil or empty"
-      end
+    def validate! # rubocop:disable Naming/PredicateMethod -- bang method raises, doesn't predicate
+      raise ArgumentError, "typst_executable_path must be a String" unless typst_executable_path.is_a?(String)
 
-      unless typst_executable_path.is_a?(String)
-        raise ArgumentError, "typst_executable_path must be a String"
-      end
+      raise ArgumentError, "typst_executable_path cannot be nil or empty" if typst_executable_path.empty?
 
       if default_root_path && !default_root_path.is_a?(String)
         raise ArgumentError, "default_root_path must be a String or nil"

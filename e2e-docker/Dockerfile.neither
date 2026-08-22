@@ -1,0 +1,20 @@
+# Proves that with neither the `typst` gem nor the Typst CLI available,
+# TypstRails raises a clear, actionable TypstRails::Error instead of a
+# confusing low-level failure.
+FROM ruby:3.4-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential libyaml-dev git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY . /app
+
+ENV BUNDLE_GEMFILE=/app/e2e-docker/Gemfile.cli-only
+RUN gem install bundler --no-document \
+    && bundle config set --local without 'development' \
+    && bundle install
+
+ENV EXPECT_BACKEND=none
+ENV EXPECT_ERROR="No Typst backend is available"
+CMD ["bundle", "exec", "ruby", "e2e-docker/scenarios/backend_smoke_test.rb"]

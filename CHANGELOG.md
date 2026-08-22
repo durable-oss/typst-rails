@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Swappable Typst compilation backends: a `:cli` backend (shells out to the
+  Typst executable, the original behavior) and a `:gem` backend (uses the
+  `typst` RubyGem to compile in-process when installed), selected
+  automatically via `TypstRails::Backends::Registry` or set explicitly with
+  `TypstRails.configure { |c| c.backend = :gem }`. Custom backends can be
+  registered for other compilation strategies.
+- Docker-based end-to-end tests (`e2e-docker/`, `rake e2e:docker`) covering
+  the backend auto-detection matrix (CLI-only, gem-only, both, neither) and a
+  fresh `gem build` + `gem install` smoke test, independent of the local dev
+  environment.
 - Comprehensive YARD documentation for all public APIs
 - Enhanced gemspec metadata with bug tracker and documentation URIs
 - MFA requirement for RubyGems publishing
@@ -18,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved module and class documentation with examples
 - Enhanced gemspec description with clearer value proposition
 - Updated author email to commercial@durableprogramming.com
+
+### Fixed
+- `TypstRails.configuration.typst_executable_path` is now actually used by
+  the CLI backend when compiling (previously ignored, so the setting had no
+  effect).
 
 ## [0.1.0] - 2024-01-XX (Initial Release)
 

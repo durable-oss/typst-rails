@@ -6,34 +6,35 @@ module TypstRails
   class FrameworkDetectionTest < Minitest::Test
     def test_rails_detection_when_rails_defined
       with_defined_constant(:Rails, mock_rails_class) do
-        assert FrameworkDetection.rails?, "Should detect Rails when Rails constant is defined"
+        assert_predicate FrameworkDetection, :rails?, "Should detect Rails when Rails constant is defined"
       end
     end
 
     def test_rails_detection_when_rails_not_defined
       with_undefined_constant(:Rails) do
-        refute FrameworkDetection.rails?, "Should not detect Rails when Rails constant is not defined"
+        refute_predicate FrameworkDetection, :rails?, "Should not detect Rails when Rails constant is not defined"
       end
     end
 
     def test_rails_detection_when_rails_lacks_application_method
       rails_without_application = Class.new
+
       with_defined_constant(:Rails, rails_without_application) do
-        refute FrameworkDetection.rails?, "Should not detect Rails when Rails.application is not available"
+        refute_predicate FrameworkDetection, :rails?, "Should not detect Rails when Rails.application is not available"
       end
     end
 
     def test_rage_detection_when_rage_defined
       with_defined_constant(:Rage, Module.new) do
         with_defined_constant(:Rage, Module.new.tap { |m| m.const_set(:Application, Class.new) }) do
-          assert FrameworkDetection.rage?, "Should detect Rage when Rage::Application is defined"
+          assert_predicate FrameworkDetection, :rage?, "Should detect Rage when Rage::Application is defined"
         end
       end
     end
 
     def test_rage_detection_when_rage_not_defined
       with_undefined_constant(:Rage) do
-        refute FrameworkDetection.rage?, "Should not detect Rage when Rage constant is not defined"
+        refute_predicate FrameworkDetection, :rage?, "Should not detect Rage when Rage constant is not defined"
       end
     end
 
@@ -41,15 +42,16 @@ module TypstRails
       with_defined_constant(:Sinatra, Module.new) do
         sinatra_module = Module.new
         sinatra_module.const_set(:Base, Class.new)
+
         with_defined_constant(:Sinatra, sinatra_module) do
-          assert FrameworkDetection.sinatra?, "Should detect Sinatra when Sinatra::Base is defined"
+          assert_predicate FrameworkDetection, :sinatra?, "Should detect Sinatra when Sinatra::Base is defined"
         end
       end
     end
 
     def test_sinatra_detection_when_sinatra_not_defined
       with_undefined_constant(:Sinatra) do
-        refute FrameworkDetection.sinatra?, "Should not detect Sinatra when Sinatra constant is not defined"
+        refute_predicate FrameworkDetection, :sinatra?, "Should not detect Sinatra when Sinatra constant is not defined"
       end
     end
 
@@ -63,6 +65,7 @@ module TypstRails
       with_undefined_constant(:Rails) do
         rage_module = Module.new
         rage_module.const_set(:Application, Class.new)
+
         with_defined_constant(:Rage, rage_module) do
           assert_equal :rage, FrameworkDetection.detected_framework
         end
@@ -74,6 +77,7 @@ module TypstRails
         with_undefined_constant(:Rage) do
           sinatra_module = Module.new
           sinatra_module.const_set(:Base, Class.new)
+
           with_defined_constant(:Sinatra, sinatra_module) do
             assert_equal :sinatra, FrameworkDetection.detected_framework
           end
