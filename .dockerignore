@@ -1,0 +1,7 @@
+.devenv/
+.direnv/
+coverage/
+e2e-tests/output/
+e2e-docker/*/output/
+tmp/
+log/
