@@ -1,5 +1,10 @@
-#!/usr/bin/env ruby
-$: << File.expand_path("../test", __dir__)
-
-require "bundler/setup"
-require "rails/plugin/test"
+#!/usr/bin/env bash
+#
+# Run the unit test suite. Extra arguments pass through to rake.
+#
+#   bin/test                     the whole suite
+#   bin/test TEST=test/foo_test.rb   a single file
+#
+set -euo pipefail
+cd "$(dirname "$0")/.."
+exec bundle exec rake test "$@"

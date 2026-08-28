@@ -1,5 +1,9 @@
 # Typst Rails
 
+[![CI](https://github.com/durable-oss/typst-rails/actions/workflows/ci.yml/badge.svg)](https://github.com/durable-oss/typst-rails/actions/workflows/ci.yml)
+[![Gem Version](https://badge.fury.io/rb/typst-rails.svg)](https://rubygems.org/gems/typst-rails)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](MIT-LICENSE)
+
 `TypstRails` integrates the powerful [Typst](https://typst.app/) typesetting system with Ruby applications. Generate high-quality PDFs from Typst templates with seamless framework integration for Rails, Rage, and Sinatra—or use it standalone in any Ruby project.
 
 This gem is built with [The Durable Philosophy](#the-durable-philosophy) at its core, emphasizing stability, long-term maintainability, and pragmatic solutions for real-world problems.

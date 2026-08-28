@@ -1,0 +1,65 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write   # create the GitHub Release
+      id-token: write   # RubyGems trusted publishing (OIDC)
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.1"
+          bundler-cache: true
+
+      - name: Verify the tag matches the gem version
+        run: |
+          gem_version="$(ruby -Ilib -rtypst_rails/version -e 'print TypstRails::VERSION')"
+          tag_version="${GITHUB_REF_NAME#v}"
+          if [ "$gem_version" != "$tag_version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match gem version $gem_version" >&2
+            exit 1
+          fi
+          echo "Version $gem_version matches tag $GITHUB_REF_NAME"
+
+      - name: Lint
+        run: bundle exec rubocop
+
+      - name: Run tests
+        run: bundle exec rake test
+
+      - name: Extract the changelog section for this release
+        id: changelog
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          {
+            echo "notes<<CHANGELOG_EOF"
+            awk -v version="$version" '
+              $0 ~ "^## \\[" version "\\]" { capture = 1; next }
+              capture && /^## \[/ { exit }
+              capture { print }
+            ' CHANGELOG.md
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Publish to RubyGems
+        uses: rubygems/release-gem@v1
+
+      - name: Create the GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          body: ${{ steps.changelog.outputs.notes }}
+          files: pkg/*.gem
+          generate_release_notes: false

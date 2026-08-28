@@ -1,0 +1,148 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Cut a release: bump the version, promote the CHANGELOG's Unreleased
+# section, commit, tag, and push. Pushing the tag triggers the
+# release workflow, which publishes the gem to RubyGems via trusted
+# publishing.
+#
+# Usage:
+#   bin/release patch          0.1.0 -> 0.1.1
+#   bin/release minor          0.1.0 -> 0.2.0
+#   bin/release major          0.1.0 -> 1.0.0
+#   bin/release 1.2.3          set an explicit version
+#   bin/release patch --dry-run   show what would change, touch nothing
+
+require "date"
+require "open3"
+
+ROOT = File.expand_path("..", __dir__)
+VERSION_FILE = File.join(ROOT, "lib", "typst_rails", "version.rb")
+CHANGELOG_FILE = File.join(ROOT, "CHANGELOG.md")
+
+def abort_with(message)
+  warn "error: #{message}"
+  exit 1
+end
+
+def run(*command)
+  output, status = Open3.capture2e(*command, chdir: ROOT)
+  abort_with("`#{command.join(" ")}` failed:\n#{output}") unless status.success?
+  output.strip
+end
+
+def usage
+  warn <<~TEXT
+    usage: bin/release (major|minor|patch|X.Y.Z) [--dry-run]
+
+      major|minor|patch   bump the corresponding part of the current version
+      X.Y.Z               set an explicit version
+      --dry-run           print the planned changes without writing anything
+  TEXT
+  exit 1
+end
+
+args = ARGV.dup
+dry_run = !args.delete("--dry-run").nil?
+bump = args.shift
+usage if bump.nil? || !args.empty?
+
+current = File.read(VERSION_FILE)[/VERSION\s*=\s*"([^"]+)"/, 1]
+abort_with("could not read the current version from #{VERSION_FILE}") unless current
+
+new_version =
+  case bump
+  when "major", "minor", "patch"
+    major, minor, patch = current.split(".").map(&:to_i)
+    case bump
+    when "major" then "#{major + 1}.0.0"
+    when "minor" then "#{major}.#{minor + 1}.0"
+    else "#{major}.#{minor}.#{patch + 1}"
+    end
+  when /\A\d+\.\d+\.\d+(?:\.[A-Za-z0-9]+)*\z/
+    bump
+  else
+    usage
+  end
+
+tag = "v#{new_version}"
+
+puts "Releasing #{current} -> #{new_version} (tag #{tag})"
+puts "(dry run: nothing will be written)" if dry_run
+
+# --- Preflight ---------------------------------------------------------
+
+branch = run("git", "rev-parse", "--abbrev-ref", "HEAD")
+abort_with("releases must be cut from main (currently on #{branch})") unless branch == "main" || dry_run
+
+abort_with("working tree is dirty; commit or stash first") unless run("git", "status", "--porcelain").empty?
+
+existing_tags = run("git", "tag", "--list", tag)
+abort_with("tag #{tag} already exists") unless existing_tags.empty?
+
+run("git", "fetch", "origin", "--tags")
+local_head = run("git", "rev-parse", "HEAD")
+remote_head = run("git", "rev-parse", "origin/main")
+unless local_head == remote_head || dry_run
+  abort_with("local main (#{local_head[0, 7]}) differs from origin/main (#{remote_head[0, 7]}); pull or push first")
+end
+
+changelog = File.read(CHANGELOG_FILE)
+unreleased_body = changelog[/^## \[Unreleased\]\s*\n(.*?)(?=^## \[|\z)/m, 1].to_s.strip
+abort_with("CHANGELOG has no content under ## [Unreleased]") if unreleased_body.empty?
+
+puts "\n--- Checks ---"
+unless dry_run
+  puts "Running RuboCop..."
+  run("bundle", "exec", "rubocop")
+  puts "Running tests..."
+  run("bundle", "exec", "rake", "test")
+  puts "All checks passed."
+end
+
+# --- Rewrite files -----------------------------------------------------
+
+new_version_file = File.read(VERSION_FILE).sub(/VERSION\s*=\s*"[^"]+"/, %(VERSION = "#{new_version}"))
+
+released_heading = "## [#{new_version}] - #{Date.today.iso8601}"
+new_changelog = changelog.sub(
+  /^## \[Unreleased\]\s*\n.*?(?=^## \[|\z)/m,
+  "## [Unreleased]\n\n#{released_heading}\n\n#{unreleased_body}\n\n"
+)
+
+if dry_run
+  puts "\n--- Would write #{VERSION_FILE} ---"
+  puts new_version_file
+  puts "--- Would write CHANGELOG entry ---"
+  puts released_heading
+  puts unreleased_body
+  puts "\n--- Would run ---"
+  puts "  git commit -am \"Release #{new_version}\""
+  puts "  git tag -a #{tag} -m \"Release #{new_version}\""
+  puts "  git push origin main #{tag}"
+  exit 0
+end
+
+File.write(VERSION_FILE, new_version_file)
+File.write(CHANGELOG_FILE, new_changelog)
+
+# Keep Gemfile.lock's recorded version in step with the bump.
+run("bundle", "lock")
+
+run("git", "add", VERSION_FILE, CHANGELOG_FILE, File.join(ROOT, "Gemfile.lock"))
+run("git", "commit", "-m", "Release #{new_version}")
+run("git", "tag", "-a", tag, "-m", "Release #{new_version}")
+
+puts "\nCommitted and tagged #{tag}."
+puts "Pushing to origin..."
+run("git", "push", "origin", "main")
+run("git", "push", "origin", tag)
+
+puts <<~DONE
+
+  Released #{new_version}.
+
+  The release workflow is now building and publishing the gem to RubyGems.
+  Watch it with:  gh run watch
+  Or:             gh run list --workflow=release.yml
+DONE

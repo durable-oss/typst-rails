@@ -12,6 +12,7 @@ Thank you for your interest in contributing to `typst-rails`! This document prov
 - [Documentation](#documentation)
 - [Pull Request Process](#pull-request-process)
 - [Reporting Issues](#reporting-issues)
+- [Releasing](#releasing)
 - [Code of Conduct](#code-of-conduct)
 
 ## Getting Started
@@ -20,7 +21,7 @@ Before contributing, please:
 
 1. Read the [README.md](README.md) to understand the project
 2. Review the [Durable Philosophy](README.md#the-durable-philosophy)
-3. Check [existing issues](https://github.com/davidjberube/typst-rails/issues) to avoid duplicates
+3. Check [existing issues](https://github.com/durable-oss/typst-rails/issues) to avoid duplicates
 4. Read this entire contributing guide
 
 ## Development Setup
@@ -343,10 +344,46 @@ Include:
 
 Violations may be reported to commercial@durableprogramming.com. All reports will be reviewed and investigated confidentially.
 
+## Releasing
+
+Releases are cut from `main` with `bin/release`, which bumps the version,
+promotes the `## [Unreleased]` section of `CHANGELOG.md` into a dated release
+heading, commits, tags, and pushes.
+
+```bash
+bin/release patch --dry-run   # see exactly what would change
+bin/release patch             # 0.1.0 -> 0.1.1
+bin/release minor             # 0.1.0 -> 0.2.0
+bin/release major             # 0.1.0 -> 1.0.0
+bin/release 1.2.3             # an explicit version
+```
+
+Before it changes anything, the script checks that you are on `main`, the
+working tree is clean, the tag does not already exist, `main` matches
+`origin/main`, and the `## [Unreleased]` section is not empty. It then runs
+RuboCop and the test suite.
+
+Pushing the `vX.Y.Z` tag triggers `.github/workflows/release.yml`, which
+re-runs the checks, publishes the gem to RubyGems via
+[trusted publishing](https://guides.rubygems.org/trusted-publishing/) (OIDC,
+so no API key is stored in the repository), and opens a GitHub Release
+carrying that version's changelog entry.
+
+Watch the run with `gh run watch`.
+
+### One-time setup
+
+`bin/setup-github` applies the repository settings (description, topics, merge
+strategy, branch protection). Run `bin/setup-github --dry-run` first to see
+what it would change.
+
+Trusted publishing has to be linked once on rubygems.org before the first
+release; `bin/setup-github` prints the exact steps at the end of its output.
+
 ## Questions?
 
 - **Documentation**: [API Documentation](https://rubydoc.info/gems/typst-rails)
-- **Issues**: [GitHub Issues](https://github.com/davidjberube/typst-rails/issues)
+- **Issues**: [GitHub Issues](https://github.com/durable-oss/typst-rails/issues)
 - **Email**: commercial@durableprogramming.com
 
 ---

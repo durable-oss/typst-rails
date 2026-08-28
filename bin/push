@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+#
+# Guarded push: run the full local check suite, then push to origin.
+#
+# Usage:
+#   bin/push                 push the current branch to origin
+#   bin/push --force-lease   pass --force-with-lease through to git push
+#   bin/push --skip-checks   push without running tests or rubocop
+#
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+skip_checks=0
+push_args=()
+
+for arg in "$@"; do
+  case "$arg" in
+    --skip-checks) skip_checks=1 ;;
+    --force-lease) push_args+=("--force-with-lease") ;;
+    *) push_args+=("$arg") ;;
+  esac
+done
+
+branch="$(git rev-parse --abbrev-ref HEAD)"
+
+if [ -n "$(git status --porcelain)" ]; then
+  echo "==> Working tree is dirty:"
+  git status --short
+  echo
+  echo "Commit or stash your changes before pushing." >&2
+  exit 1
+fi
+
+if [ "$skip_checks" -eq 0 ]; then
+  echo "==> Running RuboCop"
+  bundle exec rubocop
+
+  echo "==> Running tests"
+  bundle exec rake test
+
+  echo "==> Verifying the gem builds"
+  tmpdir="$(mktemp -d)"
+  trap 'rm -rf "$tmpdir"' EXIT
+  gem build typst-rails.gemspec --output "$tmpdir/typst-rails.gem" >/dev/null
+  echo "    gem builds cleanly"
+else
+  echo "==> Skipping checks (--skip-checks)"
+fi
+
+echo "==> Pushing $branch to origin"
+if git rev-parse --abbrev-ref "@{upstream}" >/dev/null 2>&1; then
+  git push "${push_args[@]}"
+else
+  git push --set-upstream origin "$branch" "${push_args[@]}"
+fi
+
+echo "==> Done"
