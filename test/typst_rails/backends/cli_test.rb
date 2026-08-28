@@ -6,14 +6,27 @@ require "tmpdir"
 module TypstRails
   module Backends
     class CliTest < Minitest::Test
+      # `available?` first checks for a literal path, then falls back to a
+      # `which` lookup. Stub both so the result does not depend on whether the
+      # machine running the tests happens to have Typst installed.
       def test_available_when_executable_on_path
         backend = Cli.new(executable_path: "typst")
+        File.stubs(:exist?).with("typst").returns(false)
+        backend.stubs(:system).with("which typst > /dev/null 2>&1").returns(true)
+
+        assert_predicate backend, :available?
+      end
+
+      def test_available_when_executable_path_exists
+        backend = Cli.new(executable_path: "/opt/typst/typst")
+        File.stubs(:exist?).with("/opt/typst/typst").returns(true)
 
         assert_predicate backend, :available?
       end
 
       def test_not_available_when_executable_missing
         backend = Cli.new(executable_path: "/no/such/typst-binary")
+        backend.stubs(:system).with("which /no/such/typst-binary > /dev/null 2>&1").returns(false)
 
         refute_predicate backend, :available?
       end

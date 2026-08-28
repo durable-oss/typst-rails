@@ -115,21 +115,17 @@ module TypstRails
       assert_includes error.message, "produced an empty PDF"
     end
 
+    # The data hash is serialized with #to_json before it is written. Raise from
+    # there rather than stubbing File.write: whether the failure surfaces during
+    # serialization or during the write depends on ActiveSupport being loaded,
+    # and the gem does not depend on ActiveSupport.
     def test_compile_raises_error_on_json_serialization_failure
       renderer = Renderer.new("= Test")
 
-      # Create an object that cannot be serialized to JSON
-      unserializable_object = Object.new
-      def unserializable_object.to_json(*_args)
-        raise JSON::GeneratorError, "Cannot serialize"
-      end
-
-      File.expects(:write).with do |path, _content|
-        path.end_with?("typst_data.json")
-      end.raises(JSON::GeneratorError.new("Cannot serialize"))
+      Hash.any_instance.stubs(:to_json).raises(JSON::GeneratorError.new("Cannot serialize"))
 
       error = assert_raises(Error) do
-        renderer.render(nil, { data: unserializable_object })
+        renderer.render(nil, { data: "anything" })
       end
 
       assert_includes error.message, "Failed to serialize data to JSON"
