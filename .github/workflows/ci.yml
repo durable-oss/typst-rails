@@ -72,6 +72,19 @@ jobs:
           rm -f Gemfile.lock
           bundle install --jobs 4 --retry 3
 
+      # The typst gem is unavailable here, so install the Typst CLI to give the
+      # :cli backend something real to compile with. Without a backend of some
+      # kind the standalone renderer check cannot produce a PDF.
+      - name: Install the Typst CLI
+        run: |
+          version="v0.15.1"
+          url="https://github.com/typst/typst/releases/download/${version}/typst-x86_64-unknown-linux-musl.tar.xz"
+          curl --fail --silent --show-error --location "$url" -o typst.tar.xz
+          tar -xf typst.tar.xz
+          sudo install -m 755 typst-x86_64-unknown-linux-musl/typst /usr/local/bin/typst
+          rm -rf typst.tar.xz typst-x86_64-unknown-linux-musl
+          typst --version
+
       - name: Run tests
         run: bundle exec rake test
 
