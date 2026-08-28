@@ -51,8 +51,17 @@ module TypstRails
 
       private
 
+      # The safe-navigation operator does not help here: TypstRails.configuration
+      # raises NoMethodError when the top-level TypstRails module has not been
+      # loaded, which happens when "typst_rails/renderer" is required on its own.
       def executable_path
-        @executable_path || TypstRails.configuration&.typst_executable_path || "typst"
+        @executable_path || configured_executable_path || "typst"
+      end
+
+      def configured_executable_path
+        return nil unless TypstRails.respond_to?(:configuration)
+
+        TypstRails.configuration&.typst_executable_path
       end
 
       def read_compiled_pdf(output_pdf_path)

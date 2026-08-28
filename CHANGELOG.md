@@ -24,6 +24,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CHANGELOG.md following Keep a Changelog format
 - SECURITY.md with security reporting process
 
+### Fixed
+- `Backends::Cli#available?` raised `NoMethodError` when the gem was loaded
+  via a bare `require "typst_rails/renderer"`, because `executable_path` read
+  `TypstRails.configuration` without checking that the top-level module was
+  loaded. Safe navigation did not help: the method itself was undefined. The
+  fault was masked wherever the `typst` gem is installed, since the `:gem`
+  backend is selected first and `Cli#available?` is never reached.
+
 ### Changed
 - Improved module and class documentation with examples
 - Enhanced gemspec description with clearer value proposition

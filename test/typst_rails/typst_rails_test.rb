@@ -92,6 +92,15 @@ module TypstRails
       run_subprocess_check("renderer_standalone_check.rb")
     end
 
+    # Regression: Cli#executable_path read TypstRails.configuration without
+    # checking that the top-level module was loaded, so the :cli backend raised
+    # NoMethodError under a bare `require "typst_rails/renderer"`. It went
+    # unnoticed because the :gem backend is picked first wherever the typst gem
+    # is installed, leaving Cli#available? uncalled.
+    def test_cli_backend_works_when_only_renderer_is_required_without_configuration
+      run_subprocess_check("cli_backend_standalone_check.rb")
+    end
+
     private
 
     def run_subprocess_check(script_name, *args)
