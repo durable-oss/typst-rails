@@ -77,56 +77,6 @@ get '/report.pdf' do
 end
 ```
 
-### Helpers
-
-The gem provides several helper methods for working with Typst templates:
-
-#### Text Escaping
-
-```ruby
-escape_typst("Price: $100")  # => "Price: \\$100"
-escape_typst("Hello #world") # => "Hello \\#world"
-```
-
-#### HTML to Markdown/Typst Conversion
-
-```ruby
-# Convert HTML to Markdown
-html_to_markdown("<h1>Title</h1><p>Content</p>")
-# => "# Title\n\nContent"
-
-# Convert HTML directly to Typst
-html_to_typst("<h1>Title</h1>")
-# => "= Title\n\n"
-
-# Sanitize HTML before conversion
-sanitize_html('<script>alert("xss")</script><p>Safe</p>')
-# => "<p>Safe</p>"
-```
-
-#### Markdown Conversion
-
-```ruby
-# Convert Markdown to Typst syntax
-markdown_to_typst("# Title\n## Subtitle")
-# => "= Title\n== Subtitle"
-
-# Include external Markdown files
-include_markdown("./content.md")
-# Reads and converts the file to Typst syntax
-```
-
-#### URL Encoding
-
-```ruby
-url_encode("hello world") # => "hello+world"
-```
-
-These helpers are available in:
-- ERB templates (Rails) - use directly: `<%= escape_typst(@text) %>`
-- Plain Ruby code - include `TypstRails::Helpers` module
-- The renderer includes these helpers automatically
-
 ### Configuration
 
 ```ruby
