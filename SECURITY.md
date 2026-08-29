@@ -61,23 +61,32 @@ When using `typst-rails`:
 
 ### Template Security
 
-- **Escape User Data**: Always escape user-provided data in templates
-- **Sanitize HTML**: Use `sanitize_html` helper when converting HTML to Typst
+- **Escape User Data**: Always escape user-provided data in templates with `escape_typst`
+- **Sanitize HTML**: This gem does not sanitize HTML. If you pass untrusted HTML to
+  `html_to_typst`, sanitize it first with a dedicated library such as ActionView's
+  `sanitize` helper, Rails::HTML sanitizers, Loofah, or the `sanitize` gem
 - **Validate JSON**: Ensure data passed to templates is properly validated
 
 ### Example Secure Usage
 
 ```ruby
-# Good: Sanitize user input before conversion
-safe_html = sanitize_html(params[:user_content])
-typst_content = html_to_typst(safe_html)
-
-# Good: Escape user-provided text
+# Good: Escape user-provided text before interpolating it into a template
 title = escape_typst(params[:title])
 
-# Bad: Never use unsanitized user input
+# Good: Sanitize untrusted HTML with a dedicated library before converting it.
+# Use whichever sanitizer your app already depends on, e.g. ActionView:
+safe_html = ActionController::Base.helpers.sanitize(params[:user_content])
+typst_content = html_to_typst(safe_html)
+
+# Bad: Never feed unsanitized user input to the converter
 # unsafe_content = html_to_typst(params[:user_content]) # DON'T DO THIS
 ```
+
+Note that HTML sanitization alone is not sufficient. Sanitizers remove dangerous
+*HTML*, but the text they leave behind is emitted into a Typst document, where
+characters such as `#`, `$`, `[`, and `@` carry syntactic meaning. Treat the
+output of `html_to_typst` on untrusted input as untrusted Typst markup, and
+compile it in a sandboxed environment.
 
 ## Known Security Considerations
 

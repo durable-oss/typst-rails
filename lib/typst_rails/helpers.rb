@@ -12,7 +12,6 @@ module TypstRails
   # - Converting HTML to Markdown and Typst
   # - Converting Markdown to Typst syntax
   # - Including external Markdown files
-  # - Sanitizing HTML for security
   # - URL encoding
   #
   # These helpers are included in the Renderer and available in Rails ERB templates
@@ -246,79 +245,6 @@ module TypstRails
         raise Error, "Failed to read Markdown file #{markdown_path}: #{e.message}"
       end
     end
-
-    # MARK: - HTML Sanitization
-
-    DEFAULT_ALLOWED_TAGS = %w[
-      h1 h2 h3 h4 h5 h6 p br strong em u s del ins
-      ul ol li blockquote pre code a img table thead
-      tbody tr th td
-    ].freeze
-
-    DEFAULT_ALLOWED_ATTRIBUTES = %w[href src alt title].freeze
-
-    # Sanitizes HTML before conversion to prevent XSS attacks.
-    #
-    # This method removes potentially dangerous tags and attributes from HTML
-    # before conversion to Typst. It provides basic XSS protection by:
-    # - Removing `<script>` and `<style>` tags
-    # - Removing event handler attributes (onclick, onload, etc.)
-    # - Optionally filtering to allowed tags and attributes
-    #
-    # @param html [String, nil] The HTML to sanitize
-    # @param allowed_tags [Array<String>, nil] List of allowed HTML tags (uses defaults if nil)
-    # @param allowed_attributes [Array<String>, nil] List of allowed attributes (uses defaults if nil)
-    # @return [String] Sanitized HTML, or empty string if html is nil
-    # @raise [ArgumentError] if html is not a String or nil
-    #
-    # @example Basic sanitization
-    #   sanitize_html("<script>alert('xss')</script><p>Safe content</p>")
-    #   # => "<p>Safe content</p>"
-    #
-    # @example Removing event handlers
-    #   sanitize_html('<div onclick="evil()">Click</div>')
-    #   # => "<div>Click</div>"
-    #
-    # @example Custom allowed tags
-    #   sanitize_html("<p>Text</p><img src='x'>", allowed_tags: %w[p])
-    #   # => "<p>Text</p>"
-    #
-    # @note This is basic sanitization. For production use with untrusted HTML,
-    #   consider using a dedicated sanitization library like Loofah or Sanitize
-    def sanitize_html(html, allowed_tags: nil, allowed_attributes: nil)
-      return "" if html.nil?
-      raise ArgumentError, "html must be a String" unless html.is_a?(String)
-
-      allowed_tags ||= DEFAULT_ALLOWED_TAGS
-      allowed_attributes ||= DEFAULT_ALLOWED_ATTRIBUTES
-
-      fragment = Nokogiri::HTML5.fragment(html)
-      strip_disallowed_nodes(fragment, allowed_tags, allowed_attributes)
-      fragment.to_html
-    end
-
-    private
-
-    # Recursively removes tags not in +allowed_tags+ (keeping their text content)
-    # and strips attributes not in +allowed_attributes+ from the tags that remain.
-    def strip_disallowed_nodes(node, allowed_tags, allowed_attributes)
-      node.children.each do |child|
-        next strip_disallowed_nodes(child, allowed_tags, allowed_attributes) unless child.element?
-
-        unless allowed_tags.include?(child.name.downcase)
-          child.replace(child.children)
-          next strip_disallowed_nodes(node, allowed_tags, allowed_attributes)
-        end
-
-        child.attribute_nodes.each do |attr|
-          attr.remove unless allowed_attributes.include?(attr.name.downcase)
-        end
-
-        strip_disallowed_nodes(child, allowed_tags, allowed_attributes)
-      end
-    end
-
-    public
 
     # MARK: - URL Encoding
 

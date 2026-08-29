@@ -77,7 +77,6 @@ Tests the `escape_typst` helper:
 Tests HTML to Typst conversion:
 - `html_to_markdown` - Converts HTML to Markdown
 - `html_to_typst` - Direct HTML to Typst conversion
-- `sanitize_html` - Removes dangerous HTML tags
 - Complex HTML structures (headings, lists, links, emphasis)
 
 ### Test 03: Markdown Conversion (`03_markdown_conversion.typ.erb`)

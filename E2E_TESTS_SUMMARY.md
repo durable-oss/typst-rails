@@ -42,12 +42,11 @@ e2e-tests/
 
 ### Test 02: HTML Conversion
 - **File**: `02_html_conversion.typ.erb`
-- **Tests**: `html_to_markdown()`, `html_to_typst()`, `sanitize_html()`
+- **Tests**: `html_to_markdown()`, `html_to_typst()`
 - **Validates**:
   - HTML headings → Typst headings
   - Bold/italic conversion
   - Lists and links
-  - XSS prevention (script tag removal)
 
 ### Test 03: Markdown Conversion
 - **File**: `03_markdown_conversion.typ.erb`

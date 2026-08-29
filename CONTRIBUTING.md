@@ -104,7 +104,7 @@ Before contributing, please:
 
 **Examples:**
 ```
-Add HTML sanitization to html_to_typst helper
+Add table support to the html_to_typst helper
 
 Fix renderer cleanup when compilation fails
 

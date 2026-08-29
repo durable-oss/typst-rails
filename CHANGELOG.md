@@ -29,6 +29,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced gemspec description with clearer value proposition
 - Updated author email to commercial@durableprogramming.com
 
+### Removed
+- **Breaking:** the `sanitize_html` helper, along with the
+  `DEFAULT_ALLOWED_TAGS` and `DEFAULT_ALLOWED_ATTRIBUTES` constants. Nothing in
+  the gem called it: `html_to_typst` never sanitized its input, so this was an
+  opt-in helper that duplicated, less thoroughly, what dedicated sanitizers
+  already do. Callers who need it should use ActionView's `sanitize` helper,
+  the Rails::HTML sanitizers, Loofah, or the `sanitize` gem. Note that HTML
+  sanitization was never sufficient here in any case: it strips dangerous HTML,
+  but the surviving text still reaches a Typst document where `#`, `$`, `[`,
+  and `@` are syntactically meaningful. See SECURITY.md.
+
 ### Fixed
 - `Backends::Cli#available?` raised `NoMethodError` when the gem was loaded
   via a bare `require "typst_rails/renderer"`, because `executable_path` read

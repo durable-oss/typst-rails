@@ -63,10 +63,9 @@ The gem implements extensive defensive programming to ensure reliability and sec
 
 ### Security
 
-1. **HTML Sanitization**: `sanitize_html` removes dangerous tags and attributes
-2. **Text Escaping**: `escape_typst` prevents injection attacks
-3. **Path Validation**: File operations validate paths exist and are accessible
-4. **JSON Serialization**: Handles serialization errors gracefully
+1. **Text Escaping**: `escape_typst` prevents injection attacks
+2. **Path Validation**: File operations validate paths exist and are accessible
+3. **JSON Serialization**: Handles serialization errors gracefully
 
 ### Examples from the Code
 
@@ -183,9 +182,8 @@ end
 Always test security-related functionality:
 
 ```ruby
-def test_sanitization_prevents_xss
-  malicious_html = '<script>alert("xss")</script>'
-  result = sanitize_html(malicious_html)
-  refute_includes result, "<script>"
+def test_escape_typst_escapes_code_marker
+  result = escape_typst('#import "@preview/evil": *')
+  refute_includes result, '#import'
 end
 ```

@@ -12,8 +12,6 @@
 HTML
 %>
 
-<% malicious_html = '<script>alert("xss")</script><p>Safe content</p>' %>
-
 = HTML to Typst Conversion Test
 
 == Direct HTML to Typst
@@ -21,9 +19,6 @@ HTML
 
 == HTML to Markdown (then manual Typst)
 <%= html_to_markdown(html_content) %>
-
-== Sanitized HTML
-<%= html_to_typst(sanitize_html(malicious_html)) %>
 
 == Complex HTML Structure
 <% complex_html = <<~HTML
@@ -34,4 +29,4 @@ HTML
 %>
 <%= html_to_typst(complex_html) %>
 
-This document tests HTML to Typst conversion including sanitization.
+This document tests HTML to Typst conversion.
