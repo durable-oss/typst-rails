@@ -29,6 +29,6 @@
 /e2e-tests/output/*.pdf
 
 # Docker E2E local bundler state (per-Gemfile, created by ad-hoc `bundle`
-# invocations while iterating on e2e-docker/ outside the containers)
-/e2e-docker/.bundle/
-/e2e-docker/*.lock
+# invocations while iterating on e2e-tests/docker/ outside the containers)
+/e2e-tests/docker/.bundle/
+/e2e-tests/docker/*.lock

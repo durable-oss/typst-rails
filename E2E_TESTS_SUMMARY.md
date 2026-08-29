@@ -24,10 +24,14 @@ e2e-tests/
 │   └── 05_complex_template.typ.erb    # Real-world comprehensive test
 ├── fixtures/
 │   └── sample.md                       # Test data for include_markdown
-└── output/                             # Generated files (gitignored)
-    ├── .gitkeep
-    ├── *.typ                          # Intermediate Typst source
-    └── *.pdf                          # Final PDFs
+├── output/                             # Generated files (gitignored)
+│   ├── .gitkeep
+│   ├── *.typ                          # Intermediate Typst source
+│   └── *.pdf                          # Final PDFs
+└── docker/                             # Docker backend matrix (rake e2e:docker)
+    ├── docker-compose.yml
+    ├── Dockerfile.*                    # One per backend scenario
+    └── scenarios/                      # Smoke tests run in the containers
 ```
 
 ## Test Coverage

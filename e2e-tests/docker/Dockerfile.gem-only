@@ -9,10 +9,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 COPY . /app
 
-ENV BUNDLE_GEMFILE=/app/e2e-docker/Gemfile.gem-only
+ENV BUNDLE_GEMFILE=/app/e2e-tests/docker/Gemfile.gem-only
 RUN gem install bundler --no-document \
     && bundle config set --local without 'development' \
     && bundle install
 
 ENV EXPECT_BACKEND=gem
-CMD ["bundle", "exec", "ruby", "e2e-docker/scenarios/backend_smoke_test.rb"]
+CMD ["bundle", "exec", "ruby", "e2e-tests/docker/scenarios/backend_smoke_test.rb"]

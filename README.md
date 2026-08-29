@@ -187,7 +187,7 @@ a real release rather than loaded from the working tree:
 bundle exec rake e2e:docker
 ```
 
-See [e2e-docker/README.md](e2e-docker/README.md) for detailed documentation.
+See [e2e-tests/docker/README.md](e2e-tests/docker/README.md) for detailed documentation.
 
 ### Code Coverage
 

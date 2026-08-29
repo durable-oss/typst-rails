@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   automatically via `TypstRails::Backends::Registry` or set explicitly with
   `TypstRails.configure { |c| c.backend = :gem }`. Custom backends can be
   registered for other compilation strategies.
-- Docker-based end-to-end tests (`e2e-docker/`, `rake e2e:docker`) covering
+- Docker-based end-to-end tests (`e2e-tests/docker/`, `rake e2e:docker`) covering
   the backend auto-detection matrix (CLI-only, gem-only, both, neither) and a
   fresh `gem build` + `gem install` smoke test, independent of the local dev
   environment.

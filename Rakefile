@@ -37,7 +37,7 @@ namespace :e2e do
   task :docker do
     require "open3"
 
-    compose_dir = File.join(__dir__, "e2e-docker")
+    compose_dir = File.join(__dir__, "e2e-tests/docker")
     puts "Building Docker E2E images (this can take a while the first time)..."
     build_out, build_status = Open3.capture2e("docker", "compose", "build", chdir: compose_dir)
     unless build_status.success?

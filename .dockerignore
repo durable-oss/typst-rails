@@ -2,6 +2,6 @@
 .direnv/
 coverage/
 e2e-tests/output/
-e2e-docker/*/output/
+e2e-tests/docker/*/output/
 tmp/
 log/

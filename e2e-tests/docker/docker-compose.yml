@@ -1,0 +1,27 @@
+name: typst-rails-e2e
+
+services:
+  cli-only:
+    build:
+      context: ../..
+      dockerfile: e2e-tests/docker/Dockerfile.cli-only
+
+  gem-only:
+    build:
+      context: ../..
+      dockerfile: e2e-tests/docker/Dockerfile.gem-only
+
+  both:
+    build:
+      context: ../..
+      dockerfile: e2e-tests/docker/Dockerfile.both
+
+  neither:
+    build:
+      context: ../..
+      dockerfile: e2e-tests/docker/Dockerfile.neither
+
+  fresh-install:
+    build:
+      context: ../..
+      dockerfile: e2e-tests/docker/Dockerfile.fresh-install

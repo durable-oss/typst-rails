@@ -1,5 +1,5 @@
-# Proves TypstRails uses the CLI backend when the `typst` gem is not bundled
-# but the Typst executable is on PATH.
+# Proves that when both the `typst` gem and the Typst CLI executable are
+# available, auto-detection prefers the gem backend (in-process, no subprocess).
 FROM ruby:3.4-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -17,10 +17,10 @@ RUN curl -fsSL "https://github.com/typst/typst/releases/download/v${TYPST_VERSIO
 WORKDIR /app
 COPY . /app
 
-ENV BUNDLE_GEMFILE=/app/e2e-docker/Gemfile.cli-only
+ENV BUNDLE_GEMFILE=/app/e2e-tests/docker/Gemfile.gem-only
 RUN gem install bundler --no-document \
     && bundle config set --local without 'development' \
     && bundle install
 
-ENV EXPECT_BACKEND=cli
-CMD ["bundle", "exec", "ruby", "e2e-docker/scenarios/backend_smoke_test.rb"]
+ENV EXPECT_BACKEND=gem
+CMD ["bundle", "exec", "ruby", "e2e-tests/docker/scenarios/backend_smoke_test.rb"]

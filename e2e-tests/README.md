@@ -36,6 +36,11 @@ e2e-tests/
 ├── output/            # Generated files (gitignored)
 │   ├── *.typ         # Intermediate Typst source
 │   └── *.pdf         # Final PDFs
+├── docker/            # Docker-based backend matrix tests (rake e2e:docker)
+│   ├── docker-compose.yml
+│   ├── Dockerfile.*  # One per backend scenario
+│   ├── scenarios/    # Smoke tests run inside the containers
+│   └── README.md
 ├── run_e2e_tests.rb  # Test runner script
 └── README.md         # This file
 ```

@@ -24,6 +24,6 @@ RUN gem build typst-rails.gemspec \
     && gem install --no-document ./typst-rails-*.gem
 
 WORKDIR /app
-COPY e2e-docker/scenarios/fresh_install_test.rb /app/fresh_install_test.rb
+COPY e2e-tests/docker/scenarios/fresh_install_test.rb /app/fresh_install_test.rb
 
 CMD ["ruby", "fresh_install_test.rb"]

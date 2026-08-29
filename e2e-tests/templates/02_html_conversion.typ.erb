@@ -17,8 +17,11 @@ HTML
 == Direct HTML to Typst
 <%= html_to_typst(html_content) %>
 
-== HTML to Markdown (then manual Typst)
-<%= html_to_markdown(html_content) %>
+== HTML to Markdown (intermediate representation)
+
+The raw Markdown below is shown verbatim, not interpreted as Typst markup.
+
+#raw(<%= html_to_markdown(html_content).dump %>, block: true, lang: "markdown")
 
 == Complex HTML Structure
 <% complex_html = <<~HTML

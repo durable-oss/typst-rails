@@ -53,7 +53,7 @@ works locally but was never `git add`ed and so is silently missing from
 bundle exec rake e2e:docker
 
 # Or drive Docker Compose directly, e.g. to iterate on one scenario
-cd e2e-docker
+cd e2e-tests/docker
 docker compose build gem-only
 docker compose run --rm gem-only
 docker compose down --remove-orphans
@@ -70,7 +70,7 @@ lists which ones.
 2. Add a `Dockerfile.*` that installs whatever the scenario needs (Typst CLI,
    nothing, etc.) and runs a script from `scenarios/`.
 3. Add a service to `docker-compose.yml` pointing at it.
-4. Add the service name to `DOCKER_SCENARIOS` in the root `Rakefile`.
+4. Add the service name to `DOCKER_E2E_SCENARIOS` in the root `Rakefile`.
 
 ## Notes
 
