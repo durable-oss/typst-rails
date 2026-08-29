@@ -50,6 +50,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `TypstRails.configuration.typst_executable_path` is now actually used by
   the CLI backend when compiling (previously ignored, so the setting had no
   effect).
+- Three E2E templates failed to compile because they fed Typst syntax it
+  could not parse. `02_html_conversion` piped `html_to_markdown` output --
+  raw Markdown, where `#` starts a heading -- directly into the document,
+  which Typst reads as code; it is now shown verbatim in a `#raw()` block.
+  `03_markdown_conversion` referenced a remote image, which Typst refuses to
+  fetch; the image case is now asserted as generated markup instead, since the
+  renderer compiles from a temp dir whose `--root` cannot reach repo files.
+  `05_complex_template` passed plain text containing `#` and `*` through
+  `html_to_typst`, which does not escape Typst metacharacters; the fixtures
+  are now the HTML that helper expects.
 
 ## [0.1.0] - 2024-01-XX (Initial Release)
 
