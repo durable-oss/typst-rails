@@ -318,6 +318,236 @@ module TypstRails
       end
     end
 
+    # MARK: - Source size boundary
+    #
+    # MAX_SOURCE_SIZE is a byte limit, not a character limit, so the boundary
+    # cases matter for multibyte sources.
+
+    def test_source_exactly_at_the_size_limit_is_accepted
+      source = "a" * Renderer::MAX_SOURCE_SIZE
+
+      renderer = Renderer.new(source)
+
+      assert_equal Renderer::MAX_SOURCE_SIZE, renderer.source.bytesize
+    end
+
+    def test_source_one_byte_over_the_limit_is_rejected
+      source = "a" * (Renderer::MAX_SOURCE_SIZE + 1)
+
+      error = assert_raises(ArgumentError) { Renderer.new(source) }
+
+      assert_includes error.message, "too large"
+    end
+
+    # A multibyte string can be under the character count but over the byte
+    # limit; the check must use bytesize.
+    def test_size_limit_counts_bytes_not_characters
+      # "日" is 3 bytes in UTF-8.
+      source = "日" * ((Renderer::MAX_SOURCE_SIZE / 3) + 1)
+
+      assert_operator source.length, :<, Renderer::MAX_SOURCE_SIZE
+      assert_raises(ArgumentError) { Renderer.new(source) }
+    end
+
+    def test_error_message_reports_both_actual_and_maximum_size
+      source = "a" * (Renderer::MAX_SOURCE_SIZE + 1)
+
+      error = assert_raises(ArgumentError) { Renderer.new(source) }
+
+      assert_includes error.message, (Renderer::MAX_SOURCE_SIZE + 1).to_s
+      assert_includes error.message, Renderer::MAX_SOURCE_SIZE.to_s
+    end
+
+    # MARK: - Source coercion
+
+    def test_non_string_source_is_coerced_via_to_s
+      renderer = Renderer.new(12_345)
+
+      assert_equal "12345", renderer.source
+    end
+
+    def test_empty_source_is_accepted_at_construction_and_rejected_at_render
+      renderer = Renderer.new("")
+
+      assert_empty renderer.source
+      error = assert_raises(ArgumentError) { renderer.render(nil, {}) }
+      assert_includes error.message, "Source is empty"
+    end
+
+    def test_false_source_is_coerced_rather_than_treated_as_nil
+      renderer = Renderer.new(false)
+
+      assert_equal "false", renderer.source
+    end
+
+    # MARK: - view_context bookkeeping
+
+    def test_view_context_is_nil_before_render
+      renderer = Renderer.new("= Test")
+
+      assert_nil renderer.view_context
+    end
+
+    def test_render_records_the_view_context
+      mock_successful_typst_compilation
+      view = Struct.new(:assigns).new({ title: "T" })
+      renderer = Renderer.new("= Test")
+
+      renderer.render(view, {})
+
+      assert_same view, renderer.view_context
+    end
+
+    # MARK: - Data serialization
+
+    def test_render_writes_symbolized_keys_to_the_json_data_file
+      force_cli_backend!
+      captured = nil
+
+      Open3.stubs(:capture3).with do |*args|
+        output_path = args.last
+        data_path = File.join(File.dirname(output_path), "typst_data.json")
+        captured = JSON.parse(File.read(data_path)) if File.exist?(data_path)
+        File.binwrite(output_path, "pdf") if output_path.end_with?(".pdf")
+        true
+      end.returns(["", "", mock_status(true)])
+
+      view = Struct.new(:assigns).new({ "string_key" => 1 })
+      Renderer.new("= Test").render(view, { "local_key" => 2 })
+
+      assert_equal({ "string_key" => 1, "local_key" => 2 }, captured)
+    end
+
+    def test_render_without_view_context_passes_local_assigns_through_unchanged
+      force_cli_backend!
+      captured = nil
+
+      Open3.stubs(:capture3).with do |*args|
+        output_path = args.last
+        data_path = File.join(File.dirname(output_path), "typst_data.json")
+        captured = JSON.parse(File.read(data_path)) if File.exist?(data_path)
+        File.binwrite(output_path, "pdf") if output_path.end_with?(".pdf")
+        true
+      end.returns(["", "", mock_status(true)])
+
+      Renderer.new("= Test").render(nil, { title: "Report", count: 3 })
+
+      assert_equal({ "title" => "Report", "count" => 3 }, captured)
+    end
+
+    # MARK: - transform_value_for_json_serialization
+
+    def test_transform_leaves_primitives_untouched
+      renderer = Renderer.new("= Test")
+
+      [nil, true, false, 42, 3.5, "text", :sym].each do |value|
+        assert_equal value, renderer.send(:transform_value_for_json_serialization, value)
+      end
+    end
+
+    def test_transform_handles_an_empty_array_and_hash
+      renderer = Renderer.new("= Test")
+
+      assert_empty renderer.send(:transform_value_for_json_serialization, [])
+      assert_empty renderer.send(:transform_value_for_json_serialization, {})
+    end
+
+    def test_transform_converts_dates_nested_inside_arrays_of_hashes
+      renderer = Renderer.new("= Test")
+      date = Date.new(2024, 3, 1)
+
+      result = renderer.send(:transform_value_for_json_serialization, [{ due: date }])
+
+      assert_equal [{ due: "2024-03-01" }], result
+    end
+
+    def test_transform_preserves_hash_keys_while_converting_values
+      renderer = Renderer.new("= Test")
+
+      result = renderer.send(:transform_value_for_json_serialization, { "a" => Date.new(2024, 1, 2), b: 1 })
+
+      assert_equal({ "a" => "2024-01-02", b: 1 }, result)
+    end
+
+    # MARK: - respond_to_missing? / method_missing without a view context
+
+    def test_respond_to_missing_is_false_when_no_view_context_is_set
+      renderer = Renderer.new("= Test")
+
+      refute_respond_to renderer, :some_helper
+    end
+
+    def test_method_missing_raises_no_method_error_when_no_view_context_is_set
+      renderer = Renderer.new("= Test")
+
+      assert_raises(NoMethodError) { renderer.some_helper }
+    end
+
+    # The renderer includes Helpers, so helper methods must resolve directly
+    # rather than falling through to method_missing.
+    def test_helper_methods_are_available_on_the_renderer
+      renderer = Renderer.new("= Test")
+
+      assert_respond_to renderer, :escape_typst
+      assert_equal "\\$100", renderer.escape_typst("$100")
+    end
+
+    # MARK: - ActiveRecord detection
+    #
+    # active_record_value? checks Base and Relation separately, guarding each
+    # with defined? so the gem works with no ActiveRecord loaded at all.
+
+    def test_active_record_relations_are_serialized_via_as_json
+      renderer = Renderer.new("= Test")
+      active_record_module = Module.new
+      active_record_module.const_set(:Base, Class.new)
+      relation_class = Class.new do
+        def as_json
+          [{ "id" => 1 }, { "id" => 2 }]
+        end
+      end
+      active_record_module.const_set(:Relation, relation_class)
+
+      with_defined_constant(:ActiveRecord, active_record_module) do
+        result = renderer.send(:transform_value_for_json_serialization, relation_class.new)
+
+        assert_equal([{ "id" => 1 }, { "id" => 2 }], result)
+      end
+    end
+
+    # With ActiveRecord::Base defined but no Relation constant, the check must
+    # short-circuit rather than raise NameError.
+    def test_missing_relation_constant_does_not_raise
+      renderer = Renderer.new("= Test")
+      active_record_module = Module.new
+      active_record_module.const_set(:Base, Class.new)
+
+      with_defined_constant(:ActiveRecord, active_record_module) do
+        refute renderer.send(:active_record_value?, "plain string")
+      end
+    end
+
+    def test_non_active_record_values_are_not_treated_as_records
+      renderer = Renderer.new("= Test")
+      active_record_module = Module.new
+      active_record_module.const_set(:Base, Class.new)
+      active_record_module.const_set(:Relation, Class.new)
+
+      with_defined_constant(:ActiveRecord, active_record_module) do
+        refute renderer.send(:active_record_value?, { plain: "hash" })
+        refute renderer.send(:active_record_value?, [1, 2, 3])
+      end
+    end
+
+    # The common case for this gem: no ActiveRecord in the process at all.
+    def test_active_record_check_is_false_when_active_record_is_absent
+      renderer = Renderer.new("= Test")
+
+      with_undefined_constant(:ActiveRecord) do
+        refute renderer.send(:active_record_value?, Object.new)
+      end
+    end
+
     private
 
     def mock_view_context(assigns_hash)

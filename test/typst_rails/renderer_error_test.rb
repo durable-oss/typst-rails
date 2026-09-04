@@ -276,5 +276,181 @@ module TypstRails
         end
       end
     end
+    # MARK: - Argument validation
+
+    def test_render_rejects_a_nil_local_assigns
+      renderer = Renderer.new("= Test")
+
+      error = assert_raises(ArgumentError) { renderer.render(nil, nil) }
+
+      assert_includes error.message, "local_assigns must be a Hash"
+    end
+
+    def test_render_rejects_an_array_local_assigns
+      renderer = Renderer.new("= Test")
+
+      assert_raises(ArgumentError) { renderer.render(nil, []) }
+    end
+
+    def test_initialize_error_message_mentions_nil_source
+      error = assert_raises(ArgumentError) { Renderer.new(nil) }
+
+      assert_includes error.message, "Source cannot be nil"
+    end
+
+    # MARK: - Error class contract
+
+    # Callers rescue TypstRails::Error, so it must stay a StandardError
+    # descendant; making it inherit from Exception would break every
+    # `rescue => e` in user code.
+    def test_error_is_a_standard_error
+      assert_operator Error, :<, StandardError
+    end
+
+    def test_error_carries_its_message
+      error = Error.new("boom")
+
+      assert_equal "boom", error.message
+    end
+
+    # MARK: - Backend errors pass through unwrapped
+
+    # A TypstRails::Error raised by a backend must reach the caller as-is, not
+    # be re-wrapped into a second "Unexpected error" layer.
+    def test_backend_errors_are_not_double_wrapped
+      backend = stub("backend")
+      backend.stubs(:compile).raises(Error, "original backend message")
+      Backends::Registry.stubs(:resolve).returns(backend)
+
+      renderer = Renderer.new("= Test")
+      error = assert_raises(Error) { renderer.render(nil, {}) }
+
+      assert_equal "original backend message", error.message
+      refute_includes error.message, "Unexpected error"
+    end
+
+    # Anything that is not already a TypstRails::Error gets wrapped, with the
+    # original class named so the cause is still diagnosable.
+    def test_non_typst_errors_from_the_backend_are_wrapped_with_their_class
+      backend = stub("backend")
+      backend.stubs(:compile).raises(TypeError, "unexpected type")
+      Backends::Registry.stubs(:resolve).returns(backend)
+
+      renderer = Renderer.new("= Test")
+      error = assert_raises(Error) { renderer.render(nil, {}) }
+
+      assert_includes error.message, "Unexpected error during Typst compilation"
+      assert_includes error.message, "TypeError"
+    end
+
+    # The original message is kept alongside the class so the cause survives
+    # the wrapping.
+    def test_wrapped_errors_retain_the_original_message
+      backend = stub("backend")
+      backend.stubs(:compile).raises(TypeError, "unexpected type")
+      Backends::Registry.stubs(:resolve).returns(backend)
+
+      error = assert_raises(Error) { Renderer.new("= Test").render(nil, {}) }
+
+      assert_includes error.message, "unexpected type"
+    end
+
+    # A resolution failure (no backend available) must surface unchanged.
+    def test_backend_resolution_failure_propagates
+      Backends::Registry.stubs(:resolve).raises(Error, "No Typst backend is available.")
+
+      renderer = Renderer.new("= Test")
+      error = assert_raises(Error) { renderer.render(nil, {}) }
+
+      assert_includes error.message, "No Typst backend is available"
+    end
+
+    # MARK: - Temp file cleanup on the error path
+
+    # A failure must not leave the scratch .typ file behind.
+    def test_temp_source_file_is_removed_when_the_backend_raises
+      captured_path = nil
+      backend = stub("backend")
+      backend.stubs(:compile).with do |typ_path, _root|
+        captured_path = typ_path
+        true
+      end.raises(Error, "compilation failed")
+      Backends::Registry.stubs(:resolve).returns(backend)
+
+      assert_raises(Error) { Renderer.new("= Test").render(nil, {}) }
+
+      refute_nil captured_path
+      refute_path_exists captured_path
+    end
+
+    def test_temp_data_file_is_removed_when_the_backend_raises
+      captured_dir = nil
+      backend = stub("backend")
+      backend.stubs(:compile).with do |_typ_path, root|
+        captured_dir = root
+        true
+      end.raises(Error, "compilation failed")
+      Backends::Registry.stubs(:resolve).returns(backend)
+
+      assert_raises(Error) { Renderer.new("= Test").render(nil, { title: "T" }) }
+
+      refute_nil captured_dir
+      refute_path_exists File.join(captured_dir, "typst_data.json")
+    end
+
+    # MARK: - JSON serialization failures
+
+    # An object whose #to_json raises must produce a TypstRails::Error rather
+    # than leaking the underlying serializer exception.
+    def test_unserializable_value_produces_a_typst_rails_error
+      force_cli_backend!
+      unserializable = Object.new
+      def unserializable.to_json(*)
+        raise JSON::GeneratorError, "cannot serialize"
+      end
+
+      renderer = Renderer.new("= Test")
+      error = assert_raises(Error) { renderer.render(nil, { bad: unserializable }) }
+
+      assert_includes error.message, "Failed to serialize data to JSON"
+    end
+
+    # MARK: - collect_data_for_typst
+
+    # A view context whose #assigns returns a non-Hash is ignored rather than
+    # crashing the render.
+    def test_non_hash_assigns_are_ignored
+      renderer = Renderer.new("= Test")
+      view = Struct.new(:assigns).new("not a hash")
+
+      result = renderer.send(:collect_data_for_typst, view, { local: 1 })
+
+      assert_equal({ local: 1 }, result)
+    end
+
+    def test_nil_assigns_are_ignored
+      renderer = Renderer.new("= Test")
+      view = Struct.new(:assigns).new(nil)
+
+      result = renderer.send(:collect_data_for_typst, view, { local: 1 })
+
+      assert_equal({ local: 1 }, result)
+    end
+
+    # An #assigns that raises is wrapped as a TypstRails::Error with context.
+    def test_raising_assigns_is_wrapped_with_context
+      renderer = Renderer.new("= Test")
+      view_class = Class.new do
+        def assigns
+          raise "assigns exploded"
+        end
+      end
+      view = view_class.new
+
+      error = assert_raises(Error) { renderer.send(:collect_data_for_typst, view, {}) }
+
+      assert_includes error.message, "Failed to collect data for Typst template"
+      assert_includes error.message, "assigns exploded"
+    end
   end
 end

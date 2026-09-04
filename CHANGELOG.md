@@ -41,6 +41,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `@` are syntactically meaningful. See SECURITY.md.
 
 ### Fixed
+- `markdown_to_typst` mangled combined bold+italic: `***text***` came out as
+  `*_text*_` with mismatched markers, because the bold pass matched only two
+  of the three asterisks and stranded the third inside the text. `***text***`
+  and `___text___` are now recognized as a single token and convert to
+  `*_text_*`.
+- `markdown_to_typst` rewrote `\x01` and `\x02` in the caller's own text to
+  `*`. Those bytes were used as internal placeholders while converting
+  emphasis, so any already present in the input were indistinguishable from
+  markers the conversion had written. Placeholders moved to the Unicode
+  private use area, and any that do appear in the source are now held aside
+  and restored verbatim.
+- `FrameworkDetection.rails?`, `.rage?`, and `.sinatra?` returned `nil` rather
+  than `false` when the framework was absent, because `defined?` yields a
+  String or nil and the expressions were not coerced. They now return real
+  booleans, so callers comparing against `false` or serializing the result
+  behave as expected.
 - `Backends::Cli#available?` raised `NoMethodError` when the gem was loaded
   via a bare `require "typst_rails/renderer"`, because `executable_path` read
   `TypstRails.configuration` without checking that the top-level module was
