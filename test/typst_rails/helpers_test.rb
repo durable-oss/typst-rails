@@ -2,6 +2,7 @@
 
 require "English"
 require "test_helper"
+require "tmpdir"
 require "typst_rails/helpers"
 
 module TypstRails
@@ -474,6 +475,72 @@ module TypstRails
       assert_equal "plain", markdown_to_typst("plain")
     end
 
+    # MARK: - markdown_to_typst interactions between passes
+
+    def test_markdown_to_typst_converts_emphasis_inside_a_heading
+      assert_equal "= *Bold* title", markdown_to_typst("# **Bold** title")
+    end
+
+    def test_markdown_to_typst_converts_emphasis_inside_link_text
+      assert_equal '#link("u")[*bold*]', markdown_to_typst("[**bold**](u)")
+    end
+
+    def test_markdown_to_typst_converts_italic_link_text_without_touching_the_url
+      result = markdown_to_typst("[*it*](https://a.com/x_y_z)")
+
+      assert_equal '#link("https://a.com/x_y_z")[_it_]', result
+    end
+
+    def test_markdown_to_typst_converts_an_image_with_empty_alt_text
+      assert_equal '#image("x.png")', markdown_to_typst("![](x.png)")
+    end
+
+    def test_markdown_to_typst_does_not_convert_link_syntax_with_empty_text
+      assert_equal "[](url)", markdown_to_typst("[](url)")
+    end
+
+    def test_markdown_to_typst_converts_a_link_followed_by_bold
+      assert_equal '#link("u")[t] *b*', markdown_to_typst("[t](u) **b**")
+    end
+
+    # MARK: - markdown_to_typst whitespace and line handling
+
+    def test_markdown_to_typst_accepts_a_tab_after_heading_hashes
+      assert_equal "= Tab", markdown_to_typst("#\tTab")
+    end
+
+    def test_markdown_to_typst_keeps_crlf_line_endings
+      assert_equal "= Title\r\n== Two\r\n", markdown_to_typst("# Title\r\n## Two\r\n")
+    end
+
+    # Emphasis does not span lines; a marker left open on one line must not
+    # pair with one on the next.
+    def test_markdown_to_typst_does_not_join_bold_across_lines
+      assert_equal "a\n**b\nc**", markdown_to_typst("a\n**b\nc**")
+    end
+
+    def test_markdown_to_typst_leaves_an_unclosed_bold_marker_alone
+      assert_equal "**unclosed", markdown_to_typst("**unclosed")
+    end
+
+    def test_markdown_to_typst_leaves_a_lone_underscore_alone
+      assert_equal "a _ b", markdown_to_typst("a _ b")
+    end
+
+    def test_markdown_to_typst_accepts_frozen_input
+      input = "# Title"
+
+      assert_predicate input, :frozen?
+      assert_equal "= Title", markdown_to_typst(input)
+    end
+
+    def test_markdown_to_typst_preserves_encoding
+      result = markdown_to_typst("# Café **fort**")
+
+      assert_equal Encoding::UTF_8, result.encoding
+      assert_equal "= Café *fort*", result
+    end
+
     # MARK: - escape_typst coverage for the remaining special characters
 
     def test_escape_typst_escapes_angle_brackets
@@ -589,6 +656,35 @@ module TypstRails
     # part of the public API. The module also defines private placeholder
     # helpers; a stray `private` above the wrong method would break every
     # template silently.
+
+    # MARK: - Argument handling shared by the string helpers
+
+    # String literals in this file are frozen by the magic comment.
+    def test_escape_typst_accepts_frozen_strings_and_does_not_mutate_them
+      input = "#tag"
+
+      assert_equal "\\#tag", escape_typst(input)
+      assert_equal "#tag", input
+    end
+
+    def test_escape_typst_rejects_symbols
+      assert_raises(ArgumentError) { escape_typst(:sym) }
+    end
+
+    def test_url_encode_rejects_numbers
+      assert_raises(ArgumentError) { url_encode(42) }
+    end
+
+    def test_html_to_typst_converts_bold_inside_a_list_item
+      assert_equal "- *a*", html_to_typst("<ul><li><strong>a</strong></li></ul>").strip
+    end
+
+    def test_include_markdown_wraps_a_directory_path
+      Dir.mktmpdir do |dir|
+        error = assert_raises(TypstRails::Error) { include_markdown(dir) }
+        assert_includes error.message, dir
+      end
+    end
 
     def test_documented_helpers_are_public_when_included
       host = Class.new { include TypstRails::Helpers }.new

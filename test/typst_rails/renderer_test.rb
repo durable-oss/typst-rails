@@ -441,7 +441,8 @@ module TypstRails
       renderer = Renderer.new("= Test")
 
       [nil, true, false, 42, 3.5, "text", :sym].each do |value|
-        assert_equal value, renderer.send(:transform_value_for_json_serialization, value)
+        result = renderer.send(:transform_value_for_json_serialization, value)
+        value.nil? ? assert_nil(result) : assert_equal(value, result)
       end
     end
 
@@ -546,6 +547,220 @@ module TypstRails
       with_undefined_constant(:ActiveRecord) do
         refute renderer.send(:active_record_value?, Object.new)
       end
+    end
+
+    # MARK: - compile_typst_source guards
+    #
+    # #render validates its own inputs first, so these guards are only
+    # reachable by calling the private method directly. They still protect
+    # any future caller inside the class.
+
+    def test_compile_typst_source_rejects_a_nil_source
+      error = assert_raises(ArgumentError) do
+        Renderer.new("= Test").send(:compile_typst_source, nil, {})
+      end
+      assert_equal "typst_source cannot be empty", error.message
+    end
+
+    def test_compile_typst_source_rejects_an_empty_source
+      assert_raises(ArgumentError) do
+        Renderer.new("= Test").send(:compile_typst_source, "", {})
+      end
+    end
+
+    def test_compile_typst_source_rejects_non_hash_data
+      error = assert_raises(ArgumentError) do
+        Renderer.new("= Test").send(:compile_typst_source, "= Test", [])
+      end
+      assert_equal "data must be a Hash", error.message
+    end
+
+    def test_write_typst_data_file_skips_nil_data
+      paths = Renderer::TempPaths.new(nil, Dir.tmpdir)
+      File.expects(:write).never
+
+      Renderer.new("= Test").send(:write_typst_data_file, paths, nil)
+
+      assert_nil paths.data_file_path
+    end
+
+    # MARK: - Files handed to the compiler
+
+    def test_render_writes_the_source_verbatim_to_the_typ_file
+      force_cli_backend!
+      source = "= Résumé — 日本語 ✓\n#let x = 1\n"
+      written = nil
+
+      Open3.stubs(:capture3).with do |*args|
+        written = File.binread(args[-2])
+        File.binwrite(args.last, "pdf")
+        true
+      end.returns(["", "", mock_status(true)])
+
+      Renderer.new(source).render(nil, {})
+
+      assert_equal source.b, written
+    end
+
+    # Templates load their data with json("typst_data.json"), a path Typst
+    # resolves relative to the source file and confines to --root. All three
+    # must therefore share a directory.
+    def test_data_file_source_file_and_root_share_a_directory
+      force_cli_backend!
+      root = typ_path = nil
+      data_file_present = false
+
+      Open3.stubs(:capture3).with do |*args|
+        root = args[args.index("--root") + 1]
+        typ_path = args[-2]
+        data_file_present = File.exist?(File.join(root, "typst_data.json"))
+        File.binwrite(args.last, "pdf")
+        true
+      end.returns(["", "", mock_status(true)])
+
+      Renderer.new("= Test").render(nil, { title: "x" })
+
+      assert_equal root, File.dirname(typ_path)
+      assert data_file_present, "typst_data.json should exist in the root directory at compile time"
+    end
+
+    def test_temp_source_file_has_a_typ_extension
+      force_cli_backend!
+      typ_path = nil
+
+      Open3.stubs(:capture3).with do |*args|
+        typ_path = args[-2]
+        File.binwrite(args.last, "pdf")
+        true
+      end.returns(["", "", mock_status(true)])
+
+      Renderer.new("= Test").render(nil, {})
+
+      assert_equal ".typ", File.extname(typ_path)
+    end
+
+    # MARK: - Data merging across key types
+
+    # Assigns arrive with string keys from Rails, locals usually with symbols.
+    # Both are symbolized before merging so the same name collides and the
+    # local wins, instead of both surviving as "title" and :title.
+    def test_string_keyed_assign_and_symbol_keyed_local_collide
+      renderer = Renderer.new("= Test")
+      view = Struct.new(:assigns).new({ "title" => "from assigns" })
+
+      data = renderer.send(:collect_data_for_typst, view, { title: "from locals" })
+
+      assert_equal({ title: "from locals" }, data)
+    end
+
+    def test_symbol_keyed_assign_and_string_keyed_local_collide
+      renderer = Renderer.new("= Test")
+      view = Struct.new(:assigns).new({ title: "from assigns" })
+
+      data = renderer.send(:collect_data_for_typst, view, { "title" => "from locals" })
+
+      assert_equal({ title: "from locals" }, data)
+    end
+
+    def test_collect_data_does_not_mutate_local_assigns
+      renderer = Renderer.new("= Test")
+      view = Struct.new(:assigns).new({ "a" => 1 })
+      locals = { "when" => Date.new(2024, 1, 2) }
+      original = locals.dup
+
+      renderer.send(:collect_data_for_typst, view, locals)
+
+      assert_equal original, locals
+    end
+
+    def test_collect_data_converts_dates_held_in_assigns
+      renderer = Renderer.new("= Test")
+      view = Struct.new(:assigns).new({ "due" => Date.new(2024, 3, 9), "items" => [{ at: Date.new(2024, 3, 10) }] })
+
+      data = renderer.send(:collect_data_for_typst, view, {})
+
+      assert_equal "2024-03-09", data[:due]
+      assert_equal [{ at: "2024-03-10" }], data[:items]
+    end
+
+    # Values from locals are transformed only when a view context is present;
+    # without one they go straight to to_json, which ActiveSupport also
+    # renders as ISO8601. Either way the template sees the same string.
+    def test_dates_serialize_identically_with_and_without_a_view_context
+      force_cli_backend!
+      captured = []
+
+      Open3.stubs(:capture3).with do |*args|
+        captured << JSON.parse(File.read(File.join(File.dirname(args.last), "typst_data.json")))
+        File.binwrite(args.last, "pdf")
+        true
+      end.returns(["", "", mock_status(true)])
+
+      locals = { due: Date.new(2024, 3, 9) }
+      Renderer.new("= Test").render(nil, locals)
+      Renderer.new("= Test").render(Struct.new(:assigns).new({}), locals)
+
+      assert_equal captured[0], captured[1]
+      assert_equal "2024-03-09", captured[0]["due"]
+    end
+
+    # MARK: - Repeated renders
+
+    def test_a_renderer_can_render_more_than_once
+      mock_successful_typst_compilation(pdf_content: "pdf")
+      renderer = Renderer.new("= Test")
+
+      assert_equal "pdf", renderer.render(nil, { a: 1 })
+      assert_equal "pdf", renderer.render(nil, { a: 2 })
+    end
+
+    def test_a_later_render_without_a_view_context_clears_the_previous_one
+      mock_successful_typst_compilation
+      renderer = Renderer.new("= Test")
+
+      renderer.render(Struct.new(:assigns).new({}), {})
+      renderer.render(nil, {})
+
+      assert_nil renderer.view_context
+    end
+
+    # MARK: - Delegation details
+
+    def test_method_missing_forwards_blocks_to_the_view_context
+      view = Class.new do
+        def capture_helper
+          "<#{yield}>"
+        end
+      end.new
+
+      renderer = Renderer.new("= Test")
+      renderer.instance_variable_set(:@view_context, view)
+
+      assert_equal "<inner>", renderer.send(:capture_helper) { "inner" }
+    end
+
+    def test_method_missing_forwards_keyword_arguments_to_the_view_context
+      view = Class.new do
+        def tag_helper(name, cls:)
+          "#{name}.#{cls}"
+        end
+      end.new
+
+      renderer = Renderer.new("= Test")
+      renderer.instance_variable_set(:@view_context, view)
+
+      assert_equal "div.box", renderer.send(:tag_helper, "div", cls: "box")
+    end
+
+    # Renderer's own methods win over the view context's.
+    def test_own_helpers_are_not_delegated
+      view = mock("view_context")
+      view.expects(:escape_typst).never
+
+      renderer = Renderer.new("= Test")
+      renderer.instance_variable_set(:@view_context, view)
+
+      assert_equal "\\#x", renderer.escape_typst("#x")
     end
 
     private

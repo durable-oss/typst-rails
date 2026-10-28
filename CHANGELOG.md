@@ -41,6 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `@` are syntactically meaningful. See SECURITY.md.
 
 ### Fixed
+- `Renderer` now forwards keyword arguments when delegating helper calls to the
+  view context. On Ruby 3, helpers taking keyword arguments raised
+  `ArgumentError` when called through the renderer.
 - `markdown_to_typst` mangled combined bold+italic: `***text***` came out as
   `*_text*_` with mismatched markers, because the bold pass matched only two
   of the three asterisks and stranded the third inside the text. `***text***`

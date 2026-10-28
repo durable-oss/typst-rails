@@ -200,6 +200,45 @@ module TypstRails
                         "the in-process gem backend should be preferred over shelling out to the CLI"
       end
 
+      def test_resolve_accepts_a_string_name
+        assert_kind_of Cli, Registry.resolve("cli")
+      end
+
+      def test_resolve_with_an_explicit_name_skips_availability_checks
+        backend = stub
+        backend.expects(:available?).never
+
+        with_registered_backends(chosen: backend) do
+          assert_same backend, Registry.resolve(:chosen)
+        end
+      end
+
+      def test_auto_detect_stops_at_the_first_available_backend
+        first = stub(available?: true)
+        second = stub
+        second.expects(:available?).never
+
+        with_registered_backends(first: first, second: second) do
+          assert_same first, Registry.resolve(:auto)
+        end
+      end
+
+      def test_auto_detect_rechecks_availability_on_every_resolve
+        backend = stub
+        backend.stubs(:available?).returns(false).then.returns(true)
+
+        with_registered_backends(only: backend) do
+          assert_raises(Error) { Registry.resolve(:auto) }
+          assert_same backend, Registry.resolve(:auto)
+        end
+      end
+
+      def test_unknown_name_error_shows_the_name_as_given
+        error = assert_raises(Error) { Registry.resolve("nope") }
+
+        assert_includes error.message, '"nope"'
+      end
+
       private
 
       # Runs the block against an empty registry, restoring the real

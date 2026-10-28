@@ -356,6 +356,83 @@ module TypstRails
         FileUtils.remove_entry(dir) if dir && File.directory?(dir)
       end
 
+      # MARK: - Argument passing
+
+      # The command is passed to Open3 as separate arguments, never as a shell
+      # string, so paths containing spaces or shell metacharacters reach Typst
+      # intact.
+      def test_compile_passes_paths_with_spaces_as_single_arguments
+        backend = Cli.new(executable_path: "typst")
+        captured_cmd = nil
+
+        Open3.stubs(:capture3).with do |*args|
+          captured_cmd = args
+          File.binwrite(args.last, "pdf bytes")
+          true
+        end.returns(["", "", mock_status(true)])
+
+        Dir.mktmpdir("dir with spaces; $(x)") do |dir|
+          typ_path = File.join(dir, "my doc.typ")
+          File.write(typ_path, "= Test")
+          backend.compile(typ_path, dir)
+
+          assert_equal ["typst", "compile", "--root", dir, typ_path, File.join(dir, "my doc_output.pdf")],
+                       captured_cmd
+        end
+      end
+
+      def test_compile_returns_binary_pdf_bytes_unchanged
+        backend = Cli.new
+        bytes = "%PDF-1.7\n\x00\xFF\xFE binary".b
+
+        Open3.stubs(:capture3).with do |*args|
+          File.binwrite(args.last, bytes)
+          true
+        end.returns(["", "", mock_status(true)])
+
+        Dir.mktmpdir do |dir|
+          typ_path = File.join(dir, "doc.typ")
+          File.write(typ_path, "= Test")
+          result = backend.compile(typ_path, dir)
+
+          assert_equal bytes, result
+          assert_equal Encoding::BINARY, result.encoding
+        end
+      end
+
+      def test_compilation_failure_message_includes_stderr
+        backend = Cli.new
+        Open3.stubs(:capture3).returns(["", "error: unknown variable: foo", mock_status(false)])
+
+        Dir.mktmpdir do |dir|
+          typ_path = File.join(dir, "doc.typ")
+          File.write(typ_path, "#foo")
+
+          error = assert_raises(Error) { backend.compile(typ_path, dir) }
+          assert_includes error.message, "Stderr: error: unknown variable: foo"
+        end
+      end
+
+      # A stale PDF left behind by an earlier run must not be mistaken for the
+      # output of a compile that failed.
+      def test_a_failed_compile_does_not_return_a_stale_output_file
+        backend = Cli.new
+        Open3.stubs(:capture3).returns(["", "boom", mock_status(false)])
+
+        Dir.mktmpdir do |dir|
+          typ_path = File.join(dir, "doc.typ")
+          File.write(typ_path, "= Test")
+          File.binwrite(File.join(dir, "doc_output.pdf"), "stale")
+
+          assert_raises(Error) { backend.compile(typ_path, dir) }
+          refute_path_exists File.join(dir, "doc_output.pdf")
+        end
+      end
+
+      def test_is_a_backend
+        assert_kind_of Base, Cli.new
+      end
+
       private
 
       def reset_configuration!

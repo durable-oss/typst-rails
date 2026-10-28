@@ -342,14 +342,15 @@ module TypstRails
     #
     # @param method_name [Symbol] The name of the missing method
     # @param args [Array] Arguments to pass to the method
+    # @param kwargs [Hash] Keyword arguments to pass to the method
     # @param block [Proc] Block to pass to the method
     # @return [Object] The result of calling the method on view_context
     # @raise [NoMethodError] if neither the renderer nor view_context respond to the method
     #
     # @see #respond_to_missing?
-    def method_missing(method_name, *args, &block)
+    def method_missing(method_name, *args, **kwargs, &block)
       if @view_context.respond_to?(method_name)
-        @view_context.public_send(method_name, *args, &block)
+        @view_context.public_send(method_name, *args, **kwargs, &block)
       else
         super
       end
