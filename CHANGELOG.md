@@ -41,6 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `@` are syntactically meaningful. See SECURITY.md.
 
 ### Fixed
+- `markdown_to_typst` no longer rewrites the contents of inline code or fenced
+  code blocks, and no longer treats `*` or `_` with whitespace on the inner
+  side as emphasis (`2 * 3 * 4` was converted to `2 _ 3 _ 4`).
 - Concurrent renders no longer share `typst_data.json`. Each render now
   compiles in its own temporary directory, so threads cannot read or delete
   one another's data.

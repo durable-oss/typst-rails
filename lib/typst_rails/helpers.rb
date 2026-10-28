@@ -47,11 +47,19 @@ module TypstRails
     # the caller's input.
     LITERAL_PLACEHOLDER = "\u{E004}"
 
+    # Sentinel standing in for a code span or fenced code block, which is held
+    # aside so no conversion pass touches its contents.
+    CODE_PLACEHOLDER = "\u{E005}"
+
     # All sentinels this module reserves, in a single character class.
-    PLACEHOLDER_PATTERN = /[\u{E000}-\u{E004}]/.freeze
+    PLACEHOLDER_PATTERN = /[\u{E000}-\u{E005}]/.freeze
+
+    # Fenced code blocks (``` or ~~~) and single-line inline code spans.
+    # Fences come first so their backticks are not read as inline spans.
+    CODE_PATTERN = /^(`{3,}|~{3,})[^\n]*\n.*?^\1[ \t]*$|(`+)[^`\n][^\n]*?\2(?!`)/m.freeze
 
     private_constant :BOLD_OPEN, :BOLD_CLOSE, :ITALIC_OPEN, :ITALIC_CLOSE,
-                     :LITERAL_PLACEHOLDER, :PLACEHOLDER_PATTERN
+                     :LITERAL_PLACEHOLDER, :CODE_PLACEHOLDER, :PLACEHOLDER_PATTERN, :CODE_PATTERN
 
     # MARK: - Text Escaping
     # Escapes text for safe use in Typst documents.
@@ -171,6 +179,8 @@ module TypstRails
     # - Links (`[text](url)` → `#link("url")[text]`)
     # - Images (`![alt](url)` → `#image("url")`)
     #
+    # Inline code and fenced code blocks pass through untouched.
+    #
     # @param markdown [String, nil] The Markdown text to convert
     # @return [String] Typst-compatible markup, or empty string if markdown is nil
     # @raise [ArgumentError] if markdown is not a String or nil
@@ -206,6 +216,13 @@ module TypstRails
       # aside and restored at the end.
       result = protect_placeholder_bytes(markdown.dup)
 
+      # Code is the same in Typst as in Markdown, and its contents are literal.
+      code_spans = []
+      result = result.gsub(CODE_PATTERN) do |code|
+        code_spans << code
+        CODE_PLACEHOLDER
+      end
+
       # Convert Markdown headers to Typst headers
       # # Title -> = Title
       # ## Subtitle -> == Subtitle
@@ -218,26 +235,26 @@ module TypstRails
       # single Markdown token, and letting the bold pass see them would consume
       # only two of the three markers and strand the leftover one mid-word.
       # ***text*** -> *_text_*
-      result.gsub!(/(\*\*\*|___)(.+?)\1/, "#{BOLD_OPEN}#{ITALIC_OPEN}\\2#{ITALIC_CLOSE}#{BOLD_CLOSE}")
+      #
+      # As in Markdown, an opening marker must be followed, and a closing one
+      # preceded, by non-whitespace, so "2 * 3 * 4" is not emphasis.
+      result.gsub!(/(\*\*\*|___)(?=\S)(.+?)(?<=\S)\1/, "#{BOLD_OPEN}#{ITALIC_OPEN}\\2#{ITALIC_CLOSE}#{BOLD_CLOSE}")
 
       # Convert Markdown bold to Typst bold, using placeholder bytes so the
       # italic pass below doesn't re-convert the resulting *text* markers.
       # **text** or __text__ -> *text*
-      result.gsub!(/(\*\*|__)(.+?)\1/, "#{BOLD_OPEN}\\2#{BOLD_CLOSE}")
+      result.gsub!(/(\*\*|__)(?=\S)(.+?)(?<=\S)\1/, "#{BOLD_OPEN}\\2#{BOLD_CLOSE}")
 
       # Convert Markdown italic to Typst italic (underscore style)
       # *text* or _text_ -> _text_
-      result.gsub!(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/, "#{ITALIC_OPEN}\\1#{ITALIC_CLOSE}")
-      result.gsub!(/(?<!_)_(?!_)(.+?)(?<!_)_(?!_)/, "#{ITALIC_OPEN}\\1#{ITALIC_CLOSE}")
+      result.gsub!(/(?<!\*)\*(?![\s*])(.+?)(?<![\s*])\*(?!\*)/, "#{ITALIC_OPEN}\\1#{ITALIC_CLOSE}")
+      result.gsub!(/(?<!_)_(?![\s_])(.+?)(?<![\s_])_(?!_)/, "#{ITALIC_OPEN}\\1#{ITALIC_CLOSE}")
 
       # Replace emphasis placeholders with their Typst markers
       result.gsub!(BOLD_OPEN, "*")
       result.gsub!(BOLD_CLOSE, "*")
       result.gsub!(ITALIC_OPEN, "_")
       result.gsub!(ITALIC_CLOSE, "_")
-
-      # Convert Markdown code to Typst code
-      # `code` -> `code` (same in Typst)
 
       # Convert Markdown images (must run before links, since ![alt](url)
       # would otherwise be matched by the link pattern below)
@@ -247,6 +264,8 @@ module TypstRails
       # Convert Markdown links
       # [text](url) -> #link("url")[text]
       result.gsub!(/\[([^\]]+)\]\(([^)]+)\)/, '#link("\2")[\1]')
+
+      result.gsub!(CODE_PLACEHOLDER) { code_spans.shift }
 
       restore_placeholder_bytes(result)
     end

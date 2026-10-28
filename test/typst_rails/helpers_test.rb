@@ -542,6 +542,62 @@ module TypstRails
       assert_equal "= Café *fort*", result
     end
 
+    # MARK: - markdown_to_typst code and literal markers
+
+    def test_markdown_to_typst_leaves_inline_code_contents_alone
+      assert_equal "`a*b*c`", markdown_to_typst("`a*b*c`")
+    end
+
+    def test_markdown_to_typst_converts_emphasis_around_inline_code
+      assert_equal "a *b* `**c**` _d_", markdown_to_typst("a **b** `**c**` *d*")
+    end
+
+    def test_markdown_to_typst_leaves_links_inside_inline_code_alone
+      assert_equal '#link("u")[x] `[y](v)`', markdown_to_typst("[x](u) `[y](v)`")
+    end
+
+    def test_markdown_to_typst_handles_double_backtick_spans
+      assert_equal "``a ` *b*``", markdown_to_typst("``a ` *b*``")
+    end
+
+    def test_markdown_to_typst_leaves_fenced_code_blocks_alone
+      markdown = "```ruby\n# comment\nx = *y* + __z__\n```\n# Heading"
+
+      assert_equal "```ruby\n# comment\nx = *y* + __z__\n```\n= Heading", markdown_to_typst(markdown)
+    end
+
+    def test_markdown_to_typst_leaves_tilde_fenced_code_blocks_alone
+      assert_equal "~~~\n**x**\n~~~", markdown_to_typst("~~~\n**x**\n~~~")
+    end
+
+    # A stray backtick must not turn the rest of the document into code.
+    def test_markdown_to_typst_inline_code_does_not_span_lines
+      assert_equal "it`s\n\n*b* `c`", markdown_to_typst("it`s\n\n**b** `c`")
+    end
+
+    def test_markdown_to_typst_preserves_a_literal_code_sentinel
+      input = "\u{E005} `c` **b**"
+
+      assert_equal "\u{E005} `c` *b*", markdown_to_typst(input)
+    end
+
+    # Markdown only treats a marker as emphasis when it hugs the text.
+    def test_markdown_to_typst_leaves_space_flanked_asterisks_alone
+      assert_equal "2 * 3 * 4", markdown_to_typst("2 * 3 * 4")
+    end
+
+    def test_markdown_to_typst_leaves_space_flanked_double_asterisks_alone
+      assert_equal "a ** b ** c", markdown_to_typst("a ** b ** c")
+    end
+
+    def test_markdown_to_typst_leaves_space_flanked_underscores_alone
+      assert_equal "a _ b _ c", markdown_to_typst("a _ b _ c")
+    end
+
+    def test_markdown_to_typst_leaves_an_asterisk_list_marker_alone
+      assert_equal "* item _x_", markdown_to_typst("* item *x*")
+    end
+
     # MARK: - escape_typst coverage for the remaining special characters
 
     def test_escape_typst_escapes_angle_brackets
