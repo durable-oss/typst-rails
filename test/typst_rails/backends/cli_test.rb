@@ -8,29 +8,108 @@ require "stringio"
 module TypstRails
   module Backends
     class CliTest < Minitest::Test
-      # `available?` first checks for a literal path, then falls back to a
-      # `which` lookup. Stub both so the result does not depend on whether the
-      # machine running the tests happens to have Typst installed.
-      def test_available_when_executable_on_path
-        backend = Cli.new(executable_path: "typst")
-        File.stubs(:exist?).with("typst").returns(false)
-        backend.stubs(:system).with("which typst > /dev/null 2>&1").returns(true)
+      # MARK: - Availability
+      #
+      # These build a real directory of fake executables and point PATH at it,
+      # so the result does not depend on whether Typst is installed here.
 
-        assert_predicate backend, :available?
+      def test_available_when_executable_on_path
+        with_path_containing("typst") do
+          assert_predicate Cli.new(executable_path: "typst"), :available?
+        end
+      end
+
+      def test_not_available_when_executable_not_on_path
+        with_path_containing("other") do
+          refute_predicate Cli.new(executable_path: "typst"), :available?
+        end
       end
 
       def test_available_when_executable_path_exists
-        backend = Cli.new(executable_path: "/opt/typst/typst")
-        File.stubs(:exist?).with("/opt/typst/typst").returns(true)
+        with_path_containing do |dir|
+          path = make_executable(dir, "typst")
 
-        assert_predicate backend, :available?
+          assert_predicate Cli.new(executable_path: path), :available?
+        end
       end
 
       def test_not_available_when_executable_missing
-        backend = Cli.new(executable_path: "/no/such/typst-binary")
-        backend.stubs(:system).with("which /no/such/typst-binary > /dev/null 2>&1").returns(false)
+        refute_predicate Cli.new(executable_path: "/no/such/typst-binary"), :available?
+      end
 
-        refute_predicate backend, :available?
+      def test_not_available_when_the_path_is_not_executable
+        with_path_containing do |dir|
+          path = File.join(dir, "typst")
+          File.write(path, "")
+          File.chmod(0o644, path)
+
+          refute_predicate Cli.new(executable_path: path), :available?
+        end
+      end
+
+      def test_not_available_when_the_path_is_a_directory
+        Dir.mktmpdir do |dir|
+          refute_predicate Cli.new(executable_path: dir), :available?
+        end
+      end
+
+      def test_a_non_executable_file_on_path_is_skipped
+        with_path_containing do |dir|
+          File.write(File.join(dir, "typst"), "")
+
+          refute_predicate Cli.new(executable_path: "typst"), :available?
+        end
+      end
+
+      def test_available_searches_every_path_entry
+        with_path_containing("typst") do |dir|
+          with_env("PATH" => ["/no/such/dir", dir].join(File::PATH_SEPARATOR)) do
+            assert_predicate Cli.new(executable_path: "typst"), :available?
+          end
+        end
+      end
+
+      def test_available_honours_pathext
+        with_path_containing("typst.exe") do
+          with_env("PATHEXT" => ".COM#{File::PATH_SEPARATOR}.exe") do
+            assert_predicate Cli.new(executable_path: "typst"), :available?
+          end
+        end
+      end
+
+      def test_available_tolerates_an_unset_path
+        with_env("PATH" => nil) do
+          refute_predicate Cli.new(executable_path: "typst"), :available?
+        end
+      end
+
+      # A bare name in the working directory is not what the compile command
+      # would run, since process spawning searches PATH only.
+      def test_a_bare_name_in_the_working_directory_is_not_enough
+        with_path_containing do |dir|
+          make_executable(dir, "typst")
+
+          Dir.chdir(dir) do
+            with_env("PATH" => "/no/such/dir") do
+              refute_predicate Cli.new(executable_path: "typst"), :available?
+            end
+          end
+        end
+      end
+
+      # The executable path is configuration, but it must still never reach
+      # a shell.
+      def test_available_does_not_run_a_shell
+        backend = Cli.new(executable_path: "typst; touch pwned")
+        backend.expects(:system).never
+        backend.expects(:`).never
+
+        Dir.mktmpdir do |dir|
+          Dir.chdir(dir) do
+            refute_predicate backend, :available?
+            refute_path_exists File.join(dir, "pwned")
+          end
+        end
       end
 
       def test_compile_returns_pdf_bytes_on_success
@@ -119,31 +198,36 @@ module TypstRails
       # Precedence is: explicit constructor argument, then
       # TypstRails.configuration.typst_executable_path, then "typst".
       def test_explicit_executable_path_wins_over_configuration
-        TypstRails.configure { |c| c.typst_executable_path = "/from/config/typst" }
-        backend = Cli.new(executable_path: "/explicit/typst")
-        File.stubs(:exist?).with("/explicit/typst").returns(true)
+        with_path_containing do |dir|
+          explicit = make_executable(dir, "explicit-typst")
+          TypstRails.configure { |c| c.typst_executable_path = "/no/such/config/typst" }
 
-        assert_predicate backend, :available?
+          assert_predicate Cli.new(executable_path: explicit), :available?
+        end
       ensure
         reset_configuration!
       end
 
       def test_falls_back_to_configured_executable_path
-        TypstRails.configure { |c| c.typst_executable_path = "/from/config/typst" }
-        backend = Cli.new
-        File.stubs(:exist?).with("/from/config/typst").returns(true)
+        with_path_containing do |dir|
+          configured = make_executable(dir, "configured-typst")
+          TypstRails.configure { |c| c.typst_executable_path = configured }
 
-        assert_predicate backend, :available?
+          assert_predicate Cli.new, :available?
+        end
       ensure
         reset_configuration!
       end
 
       def test_falls_back_to_bare_typst_when_configuration_is_absent
         TypstRails.configuration = nil
-        backend = Cli.new
-        File.stubs(:exist?).with("typst").returns(true)
 
-        assert_predicate backend, :available?
+        with_path_containing("typst") do
+          assert_predicate Cli.new, :available?
+        end
+        with_path_containing("not-typst") do
+          refute_predicate Cli.new, :available?
+        end
       ensure
         reset_configuration!
       end
@@ -437,6 +521,30 @@ module TypstRails
 
       def reset_configuration!
         TypstRails.configuration = nil
+      end
+
+      # Yields a temporary directory set as the only PATH entry, holding an
+      # executable for each of +names+.
+      def with_path_containing(*names)
+        Dir.mktmpdir do |dir|
+          names.each { |name| make_executable(dir, name) }
+          with_env("PATH" => dir, "PATHEXT" => nil) { yield dir }
+        end
+      end
+
+      def make_executable(dir, name)
+        path = File.join(dir, name)
+        File.write(path, "#!/bin/sh\n")
+        File.chmod(0o755, path)
+        path
+      end
+
+      def with_env(vars)
+        original = vars.keys.to_h { |key| [key, ENV.fetch(key, nil)] }
+        vars.each { |key, value| ENV[key] = value }
+        yield
+      ensure
+        original.each { |key, value| ENV[key] = value }
       end
 
       def capture_stderr

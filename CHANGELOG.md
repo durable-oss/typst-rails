@@ -41,6 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `@` are syntactically meaningful. See SECURITY.md.
 
 ### Fixed
+- `Backends::Cli#available?` searches PATH in Ruby instead of running
+  `which` through a shell, so the configured executable path is never
+  interpreted by a shell. It also now requires the file to be executable.
 - `escape_typst` now also escapes backticks, `~`, comment openers (`//`,
   `/*`), dash shorthands (`--`, `---`, `-?`) and line-start markers (`=`, `-`,
   `+`, `/`, `1.`). Text such as `a // b` previously lost everything after the

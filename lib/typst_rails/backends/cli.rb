@@ -23,11 +23,16 @@ module TypstRails
         @executable_path = executable_path
       end
 
+      # A path containing a directory separator is checked directly; a bare
+      # name is looked up on PATH, as the compile command would be. No shell
+      # is involved, so the path is never interpreted.
+      #
       # @return [Boolean] whether the configured Typst executable can be found
       def available?
-        return true if File.exist?(executable_path)
+        path = executable_path
+        return executable_file?(path) if directory_path?(path)
 
-        system("which #{executable_path} > /dev/null 2>&1") == true
+        executable_on_path?(path)
       end
 
       # @see Base#compile
@@ -62,6 +67,22 @@ module TypstRails
         return nil unless TypstRails.respond_to?(:configuration)
 
         TypstRails.configuration&.typst_executable_path
+      end
+
+      def directory_path?(path)
+        [File::SEPARATOR, File::ALT_SEPARATOR].compact.any? { |separator| path.include?(separator) }
+      end
+
+      def executable_on_path?(name)
+        extensions = [""] + ENV.fetch("PATHEXT", "").split(File::PATH_SEPARATOR)
+
+        ENV.fetch("PATH", "").split(File::PATH_SEPARATOR).any? do |dir|
+          extensions.any? { |ext| executable_file?(File.join(dir, "#{name}#{ext}")) }
+        end
+      end
+
+      def executable_file?(path)
+        File.file?(path) && File.executable?(path)
       end
 
       def read_compiled_pdf(output_pdf_path)
