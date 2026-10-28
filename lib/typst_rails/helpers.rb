@@ -74,6 +74,14 @@ module TypstRails
     # - `<`, `>` (labels and references)
     # - `{`, `}` (code blocks)
     # - `@` (references)
+    # - `` ` `` (raw text)
+    # - `~` (non-breaking space)
+    # - `/` when it starts a comment (`//`, `/*`)
+    # - `-` when it starts a shorthand (`--`, `---`, `-?`)
+    #
+    # Characters that only mean something at the start of a line are escaped
+    # there: `=` (heading), `-` (list), `+` (numbered list), `/` (term list)
+    # and the `.` of `1.` (numbered list).
     #
     # @param text [String, nil] The text to escape
     # @return [String] The escaped text, or empty string if text is nil
@@ -98,7 +106,11 @@ module TypstRails
 
       # Escape special Typst characters
       # See: https://typst.app/docs/reference/syntax/
-      text.gsub(/([#\$*_\[\]\\<>{}@])/, '\\\\\1')
+      text.gsub(/([#\$*_\[\]\\<>{}@`~])/, '\\\\\1')
+          .gsub(%r{/(?=[/*])}, "\\\\/")
+          .gsub(/-(?=[-?])/, "\\\\-")
+          .gsub(%r{^([ \t]*)([=+/-])}, '\\1\\\\\\2')
+          .gsub(/^([ \t]*\d+)\.(?=[ \t]|$)/, '\\1\\.')
     end
 
     # MARK: - HTML Conversion

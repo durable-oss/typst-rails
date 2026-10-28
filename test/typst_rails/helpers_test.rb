@@ -714,6 +714,72 @@ module TypstRails
     # helpers; a stray `private` above the wrong method would break every
     # template silently.
 
+    # MARK: - escape_typst for markup that is not a single character
+    #
+    # Each expected value was checked by compiling it with Typst 0.15 and
+    # confirming the PDF text matches the original input.
+
+    def test_escape_typst_escapes_backticks
+      assert_equal "\\`raw\\`", escape_typst("`raw`")
+    end
+
+    def test_escape_typst_escapes_tilde
+      assert_equal "a\\~b", escape_typst("a~b")
+    end
+
+    def test_escape_typst_escapes_line_comments
+      assert_equal "a \\// b", escape_typst("a // b")
+    end
+
+    def test_escape_typst_escapes_block_comments
+      assert_equal "\\/\\* c \\*/", escape_typst("/* c */")
+    end
+
+    def test_escape_typst_leaves_single_slashes_alone
+      assert_equal "a/b https:\\//x.com", escape_typst("a/b https://x.com")
+    end
+
+    def test_escape_typst_escapes_dash_shorthands
+      assert_equal "a \\-- b \\-\\-- c", escape_typst("a -- b --- c")
+      assert_equal "soft\\-?hyphen", escape_typst("soft-?hyphen")
+    end
+
+    def test_escape_typst_leaves_single_hyphens_alone
+      assert_equal "well-known x-y", escape_typst("well-known x-y")
+    end
+
+    def test_escape_typst_escapes_line_start_markers
+      {
+        "= heading" => "\\= heading",
+        "- item" => "\\- item",
+        "+ item" => "\\+ item",
+        "/ term: def" => "\\/ term: def",
+        "12. item" => "12\\. item"
+      }.each do |input, expected|
+        assert_equal expected, escape_typst(input), "#{input.inspect} should not become markup"
+      end
+    end
+
+    def test_escape_typst_escapes_line_start_markers_after_indentation
+      assert_equal "  \\- item\n\t\\+ item", escape_typst("  - item\n\t+ item")
+    end
+
+    def test_escape_typst_escapes_line_start_markers_on_every_line
+      assert_equal "a\n\\= b\n\\- c", escape_typst("a\n= b\n- c")
+    end
+
+    def test_escape_typst_leaves_line_start_markers_alone_mid_line
+      assert_equal "a = b + c 3. d", escape_typst("a = b + c 3. d")
+    end
+
+    def test_escape_typst_leaves_decimals_alone
+      assert_equal "3.5", escape_typst("3.5")
+    end
+
+    def test_escape_typst_escapes_a_bare_number_marker_at_line_end
+      assert_equal "1\\.", escape_typst("1.")
+    end
+
     # MARK: - Argument handling shared by the string helpers
 
     # String literals in this file are frozen by the magic comment.

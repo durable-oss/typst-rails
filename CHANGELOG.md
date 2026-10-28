@@ -41,6 +41,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `@` are syntactically meaningful. See SECURITY.md.
 
 ### Fixed
+- `escape_typst` now also escapes backticks, `~`, comment openers (`//`,
+  `/*`), dash shorthands (`--`, `---`, `-?`) and line-start markers (`=`, `-`,
+  `+`, `/`, `1.`). Text such as `a // b` previously lost everything after the
+  `//`, and a line beginning `- ` became a list item.
 - `markdown_to_typst` no longer rewrites the contents of inline code or fenced
   code blocks, and no longer treats `*` or `_` with whitespace on the inner
   side as emphasis (`2 * 3 * 4` was converted to `2 _ 3 _ 4`).
