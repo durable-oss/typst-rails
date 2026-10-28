@@ -2,6 +2,7 @@
 
 require "English"
 require "test_helper"
+require "tempfile"
 require "tmpdir"
 require "typst_rails/helpers"
 

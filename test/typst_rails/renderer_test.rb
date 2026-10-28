@@ -84,54 +84,49 @@ module TypstRails
     end
 
     def test_render_cleans_up_temp_files_on_success
-      source = "= Test"
-      renderer = Renderer.new(source)
+      root = capture_compile_root { Renderer.new("= Test").render(nil, { title: "T" }) }
 
-      mock_successful_typst_compilation
-
-      # Track created temp files
-      temp_files_created = []
-      original_tempfile_new = Tempfile.method(:new)
-      Tempfile.define_singleton_method(:new) do |*args, **kwargs|
-        file = original_tempfile_new.call(*args, **kwargs)
-        temp_files_created << file.path
-        file
-      end
-
-      renderer.render(nil, {})
-
-      # Verify files are cleaned up
-      temp_files_created.each do |path|
-        refute_path_exists path, "Temp file #{path} should be cleaned up"
-      end
-    ensure
-      # Restore Tempfile.new
-      Tempfile.singleton_class.send(:remove_method, :new)
-      Tempfile.define_singleton_method(:new, original_tempfile_new)
+      refute_path_exists root, "temp directory #{root} should be removed"
     end
 
     def test_render_cleans_up_temp_files_on_failure
-      source = "= Test"
-      renderer = Renderer.new(source)
+      root = nil
+      backend = stub("backend")
+      backend.stubs(:compile).with { |_typ, dir| root = dir }.raises(Error, "boom")
+      Backends::Registry.stubs(:resolve).returns(backend)
 
-      mock_failed_typst_compilation
+      assert_raises(Error) { Renderer.new("= Test").render(nil, { title: "T" }) }
 
-      # Track created temp files
-      temp_files = []
+      refute_path_exists root, "temp directory should be removed even on failure"
+    end
 
-      Tempfile.stub :new, lambda { |*args|
-        file = Tempfile.allocate
-        file.send(:initialize, *args)
-        temp_files << file.path
-        file
-      } do
-        assert_raises(Error) { renderer.render(nil, {}) }
-      end
+    # Each render gets its own directory, so concurrent renders cannot read
+    # or delete one another's typst_data.json.
+    def test_each_render_uses_its_own_directory
+      roots = Array.new(2) { capture_compile_root { Renderer.new("= Test").render(nil, { a: 1 }) } }
 
-      # Verify cleanup happened despite error
-      temp_files.each do |path|
-        refute_path_exists path, "Temp file should be cleaned up even on failure"
-      end
+      refute_equal roots[0], roots[1]
+    end
+
+    # Each template's source names its render, so a render that reads
+    # another's typst_data.json is caught by comparing the two.
+    def test_concurrent_renders_see_only_their_own_data
+      seen = Queue.new
+      backend = Class.new(Backends::Base) do
+        define_method(:compile) do |typ_path, root|
+          sleep 0.01 # let the other renders write their data first
+          seen << [File.read(typ_path), JSON.parse(File.read(File.join(root, "typst_data.json")))["id"]]
+          "pdf"
+        end
+      end.new
+      Backends::Registry.stubs(:resolve).returns(backend)
+
+      Array.new(8) { |i| Thread.new { Renderer.new(i.to_s).render(nil, { id: i }) } }.each(&:join)
+
+      results = Array.new(seen.size) { seen.pop }
+
+      assert_equal 8, results.size
+      results.each { |source, id| assert_equal source, id.to_s, "render #{source} read render #{id}'s data" }
     end
 
     def test_render_raises_error_on_compilation_failure
@@ -576,7 +571,7 @@ module TypstRails
     end
 
     def test_write_typst_data_file_skips_nil_data
-      paths = Renderer::TempPaths.new(nil, Dir.tmpdir)
+      paths = Renderer::TempPaths.new(Dir.tmpdir)
       File.expects(:write).never
 
       Renderer.new("= Test").send(:write_typst_data_file, paths, nil)
@@ -764,6 +759,17 @@ module TypstRails
     end
 
     private
+
+    # Runs the block with a backend that records the root directory it was
+    # given, and returns that directory.
+    def capture_compile_root
+      root = nil
+      backend = stub("backend")
+      backend.stubs(:compile).with { |_typ, dir| root = dir }.returns("pdf")
+      Backends::Registry.stubs(:resolve).returns(backend)
+      yield
+      root
+    end
 
     def mock_view_context(assigns_hash)
       context = mock("view_context")

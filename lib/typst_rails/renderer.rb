@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
-require "tempfile"
+require "tmpdir"
+require "fileutils"
 require "json"
 require "typst_rails/helpers"
 require "typst_rails/backends"
@@ -53,8 +54,10 @@ module TypstRails
     # Maximum source size (10MB) to prevent memory issues
     MAX_SOURCE_SIZE = 10 * 1024 * 1024
 
-    # Holds the filesystem paths used during a single compilation run.
-    TempPaths = Struct.new(:typ_file, :dir, :data_file_path)
+    # Holds the filesystem paths used during a single compilation run. Each
+    # run gets its own directory so concurrent renders never share a
+    # typst_data.json.
+    TempPaths = Struct.new(:dir, :typ_path, :data_file_path)
 
     # MARK: - Attributes
 
@@ -163,20 +166,17 @@ module TypstRails
     end
 
     def write_typst_source_file(paths, typst_source)
-      # Create temp file in a directory that Typst can access.
-      # Ensure it's in binary mode for writing source if it contains non-ASCII.
-      paths.typ_file = Tempfile.new(["durable_typst_template_", ".typ"], binmode: true)
-      paths.dir = File.dirname(paths.typ_file.path)
-
-      paths.typ_file.write(typst_source)
-      paths.typ_file.flush # Ensure content is written before Typst reads it.
-      paths.typ_file.close # Close it so Typst can open it, especially important on Windows.
+      # A private directory per run doubles as the Typst --root, so the
+      # template can load its data with json("typst_data.json").
+      paths.dir = Dir.mktmpdir("typst_rails_")
+      paths.typ_path = File.join(paths.dir, "template.typ")
+      File.binwrite(paths.typ_path, typst_source)
     end
 
     def write_typst_data_file(paths, data)
       return if data.nil? || data.empty?
 
-      # Create a temporary JSON data file in the same directory as the Typst source.
+      # Write the JSON data file next to the Typst source.
       # The Typst template would then use `json("typst_data.json")` to load this data.
       paths.data_file_path = File.join(paths.dir, "typst_data.json")
       File.write(paths.data_file_path, data.to_json)
@@ -188,7 +188,7 @@ module TypstRails
 
     def run_typst_compiler(paths)
       backend = Backends::Registry.resolve(configured_backend)
-      backend.compile(paths.typ_file.path, paths.dir)
+      backend.compile(paths.typ_path, paths.dir)
     rescue Error => e
       log_error(e.message)
       raise
@@ -205,15 +205,9 @@ module TypstRails
     end
 
     def cleanup_temp_paths(paths)
-      # Clean up all temporary files, suppressing any errors during cleanup
-      rescue_cleanup_errors("temp Typst file") do
-        paths.typ_file.unlink if paths.typ_file&.path && File.exist?(paths.typ_file.path)
-      end
-      rescue_cleanup_errors("temp data file") { safe_unlink(paths.data_file_path) }
-    end
+      return unless paths.dir
 
-    def safe_unlink(path)
-      File.unlink(path) if path && File.exist?(path)
+      rescue_cleanup_errors("temp directory") { FileUtils.remove_entry(paths.dir) }
     end
 
     def rescue_cleanup_errors(description)

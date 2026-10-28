@@ -148,7 +148,7 @@ module TypstRails
     def test_compile_wraps_unexpected_errors
       renderer = Renderer.new("= Test")
 
-      Tempfile.stubs(:new).raises(StandardError.new("Unexpected error"))
+      Dir.stubs(:mktmpdir).raises(StandardError.new("Unexpected error"))
 
       error = assert_raises(Error) do
         renderer.render(nil, {})
@@ -203,42 +203,28 @@ module TypstRails
       end
     end
 
-    def test_cleanup_continues_despite_data_file_unlink_failure
+    def test_cleanup_failure_warns_and_keeps_the_pdf
       renderer = Renderer.new("= Test")
 
-      mock_successful_typst_compilation
+      mock_successful_typst_compilation(pdf_content: "pdf")
+      FileUtils.stubs(:remove_entry).raises(Errno::EACCES.new("Permission denied"))
 
-      original_unlink = File.method(:unlink)
-      File.stubs(:unlink).with do |path|
-        if path.end_with?("typst_data.json")
-          true
-        else
-          original_unlink.call(path)
-          false
-        end
-      end.raises(Errno::EACCES.new("Permission denied"))
-
-      assert_output(nil, /Failed to clean up temp data file/) do
-        renderer.render(nil, { title: "Test" })
+      result = nil
+      assert_output(nil, /Failed to clean up temp directory/) do
+        result = renderer.render(nil, { title: "Test" })
       end
+      assert_equal "pdf", result
     end
 
-    def test_cleanup_continues_despite_errors
+    def test_cleanup_failure_does_not_mask_a_compilation_error
       renderer = Renderer.new("= Test")
 
-      mock_failed_typst_compilation
-
-      # Stub unlink to raise errors
-      files_unlinked = []
-      Tempfile.any_instance.stubs(:unlink).with do
-        files_unlinked << true
-        raise Errno::EACCES, "Permission denied"
-      end
+      mock_failed_typst_compilation(stderr: "syntax error")
+      FileUtils.stubs(:remove_entry).raises(Errno::EACCES.new("Permission denied"))
 
       assert_output(nil, /Failed to clean up/) do
-        assert_raises(Error) do
-          renderer.render(nil, {})
-        end
+        error = assert_raises(Error) { renderer.render(nil, {}) }
+        assert_includes error.message, "syntax error"
       end
     end
 
