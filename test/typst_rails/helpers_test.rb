@@ -319,19 +319,19 @@ module TypstRails
     end
 
     # Typst has no seventh heading level, and Markdown stops at six, so seven
-    # hashes must be left alone rather than becoming seven equals signs.
-    def test_markdown_to_typst_leaves_seven_hashes_alone
-      assert_equal "####### seven", markdown_to_typst("####### seven")
+    # hashes are plain text, not seven equals signs.
+    def test_markdown_to_typst_leaves_seven_hashes_as_text
+      assert_equal "\\#\\#\\#\\#\\#\\#\\# seven", markdown_to_typst("####### seven")
     end
 
     # A heading marker requires whitespace after the hashes; without it the
-    # text is a Typst code expression and must survive untouched.
+    # text is plain text, and must not become a Typst code expression.
     def test_markdown_to_typst_requires_whitespace_after_heading_hashes
-      assert_equal "#no-space", markdown_to_typst("#no-space")
+      assert_equal "\\#no-space", markdown_to_typst("#no-space")
     end
 
     def test_markdown_to_typst_only_converts_headings_at_line_start
-      assert_equal "text # not a heading", markdown_to_typst("text # not a heading")
+      assert_equal "text \\# not a heading", markdown_to_typst("text # not a heading")
     end
 
     def test_markdown_to_typst_converts_headings_on_every_line
@@ -399,8 +399,9 @@ module TypstRails
       assert_equal original, markdown, "markdown_to_typst must not modify the string it was given"
     end
 
-    def test_markdown_to_typst_is_idempotent_for_already_converted_headings
-      assert_equal "= Title", markdown_to_typst(markdown_to_typst("# Title"))
+    # "=" means nothing in Markdown, so Typst markup fed back in is text.
+    def test_markdown_to_typst_escapes_already_converted_headings
+      assert_equal "\\= Title", markdown_to_typst(markdown_to_typst("# Title"))
     end
 
     def test_markdown_to_typst_handles_multiline_documents
@@ -497,7 +498,7 @@ module TypstRails
     end
 
     def test_markdown_to_typst_does_not_convert_link_syntax_with_empty_text
-      assert_equal "[](url)", markdown_to_typst("[](url)")
+      assert_equal "\\[\\](url)", markdown_to_typst("[](url)")
     end
 
     def test_markdown_to_typst_converts_a_link_followed_by_bold
@@ -517,15 +518,15 @@ module TypstRails
     # Emphasis does not span lines; a marker left open on one line must not
     # pair with one on the next.
     def test_markdown_to_typst_does_not_join_bold_across_lines
-      assert_equal "a\n**b\nc**", markdown_to_typst("a\n**b\nc**")
+      assert_equal "a\n\\*\\*b\nc\\*\\*", markdown_to_typst("a\n**b\nc**")
     end
 
-    def test_markdown_to_typst_leaves_an_unclosed_bold_marker_alone
-      assert_equal "**unclosed", markdown_to_typst("**unclosed")
+    def test_markdown_to_typst_escapes_an_unclosed_bold_marker
+      assert_equal "\\*\\*unclosed", markdown_to_typst("**unclosed")
     end
 
-    def test_markdown_to_typst_leaves_a_lone_underscore_alone
-      assert_equal "a _ b", markdown_to_typst("a _ b")
+    def test_markdown_to_typst_escapes_a_lone_underscore
+      assert_equal "a \\_ b", markdown_to_typst("a _ b")
     end
 
     def test_markdown_to_typst_accepts_frozen_input
@@ -572,7 +573,7 @@ module TypstRails
 
     # A stray backtick must not turn the rest of the document into code.
     def test_markdown_to_typst_inline_code_does_not_span_lines
-      assert_equal "it`s\n\n*b* `c`", markdown_to_typst("it`s\n\n**b** `c`")
+      assert_equal "it\\`s\n\n*b* `c`", markdown_to_typst("it`s\n\n**b** `c`")
     end
 
     def test_markdown_to_typst_preserves_a_literal_code_sentinel
@@ -581,21 +582,121 @@ module TypstRails
       assert_equal "\u{E005} `c` *b*", markdown_to_typst(input)
     end
 
-    # Markdown only treats a marker as emphasis when it hugs the text.
-    def test_markdown_to_typst_leaves_space_flanked_asterisks_alone
-      assert_equal "2 * 3 * 4", markdown_to_typst("2 * 3 * 4")
+    # Markdown only treats a marker as emphasis when it hugs the text; the
+    # rest are literal characters, escaped so Typst does not read them.
+    def test_markdown_to_typst_escapes_space_flanked_asterisks
+      assert_equal "2 \\* 3 \\* 4", markdown_to_typst("2 * 3 * 4")
     end
 
-    def test_markdown_to_typst_leaves_space_flanked_double_asterisks_alone
-      assert_equal "a ** b ** c", markdown_to_typst("a ** b ** c")
+    def test_markdown_to_typst_escapes_space_flanked_double_asterisks
+      assert_equal "a \\*\\* b \\*\\* c", markdown_to_typst("a ** b ** c")
     end
 
-    def test_markdown_to_typst_leaves_space_flanked_underscores_alone
-      assert_equal "a _ b _ c", markdown_to_typst("a _ b _ c")
+    def test_markdown_to_typst_escapes_space_flanked_underscores
+      assert_equal "a \\_ b \\_ c", markdown_to_typst("a _ b _ c")
     end
 
-    def test_markdown_to_typst_leaves_an_asterisk_list_marker_alone
-      assert_equal "* item _x_", markdown_to_typst("* item *x*")
+    # MARK: - markdown_to_typst lists
+
+    # Typst has no "*" bullet, and its "+" makes a numbered item.
+    def test_markdown_to_typst_converts_asterisk_and_plus_bullets_to_dashes
+      assert_equal "- item _x_\n- other", markdown_to_typst("* item *x*\n+ other")
+    end
+
+    def test_markdown_to_typst_keeps_nested_bullet_indentation
+      assert_equal "- outer\n  - inner", markdown_to_typst("- outer\n  * inner")
+    end
+
+    def test_markdown_to_typst_keeps_ordered_list_numbers
+      assert_equal "1. one\n2. two\n7. seven", markdown_to_typst("1. one\n2) two\n7. seven")
+    end
+
+    def test_markdown_to_typst_escapes_a_marker_without_a_following_space
+      assert_equal "\\-5 degrees", markdown_to_typst("-5 degrees")
+    end
+
+    # MARK: - markdown_to_typst escaping
+
+    def test_markdown_to_typst_escapes_typst_syntax_in_prose
+      assert_equal "Use \\#hashtag, pay \\$5, mail me\\@example.com",
+                   markdown_to_typst("Use #hashtag, pay $5, mail me@example.com")
+    end
+
+    def test_markdown_to_typst_escapes_code_expressions_in_prose
+      assert_equal "\\#read(\"secret.txt\")", markdown_to_typst('#read("secret.txt")')
+    end
+
+    def test_markdown_to_typst_escapes_typst_syntax_in_headings
+      assert_equal "= Costs \\$5", markdown_to_typst("# Costs $5")
+    end
+
+    def test_markdown_to_typst_escapes_typst_syntax_in_link_text
+      assert_equal '#link("u")[\\#1 \\@home]', markdown_to_typst("[#1 @home](u)")
+    end
+
+    def test_markdown_to_typst_escapes_a_line_start_equals_sign
+      assert_equal "\\=== not a heading", markdown_to_typst("=== not a heading")
+    end
+
+    def test_markdown_to_typst_keeps_a_slash_before_bold_out_of_a_comment
+      assert_equal "and\\/*or*", markdown_to_typst("and/**or**")
+    end
+
+    # MARK: - markdown_to_typst backslash escapes
+
+    def test_markdown_to_typst_turns_backslash_escapes_into_typst_escapes
+      assert_equal "\\*not italic\\* and \\# and \\\\", markdown_to_typst("\\*not italic\\* and \\# and \\\\")
+    end
+
+    def test_markdown_to_typst_escaped_brackets_are_not_a_link
+      assert_equal "\\[a\\](u)", markdown_to_typst("\\[a\\](u)")
+    end
+
+    def test_markdown_to_typst_keeps_a_backslash_hard_line_break
+      assert_equal "one\\\ntwo", markdown_to_typst("one\\\ntwo")
+    end
+
+    def test_markdown_to_typst_leaves_a_backslash_before_a_letter_literal
+      assert_equal "C:\\\\path", markdown_to_typst("C:\\path")
+    end
+
+    # MARK: - markdown_to_typst link destinations
+
+    def test_markdown_to_typst_escapes_quotes_in_link_urls
+      assert_equal '#link("https://e.com/?q=\\"hi\\"")[x]', markdown_to_typst('[x](https://e.com/?q="hi")')
+    end
+
+    def test_markdown_to_typst_escapes_backslashes_in_link_urls
+      assert_equal '#link("a\\\\b")[x]', markdown_to_typst("[x](a\\b)")
+    end
+
+    # The destination ends at the first ")", and its quotes stay inside the
+    # string literal rather than closing it.
+    def test_markdown_to_typst_cannot_inject_code_through_a_link_url
+      assert_equal '#link("a\\"+read(\\"secret.txt\\"")[x]+")', markdown_to_typst('[x](a"+read("secret.txt")+")')
+    end
+
+    def test_markdown_to_typst_resolves_backslash_escapes_in_link_urls
+      assert_equal '#link("a_b")[x]', markdown_to_typst("[x](a\\_b)")
+    end
+
+    def test_markdown_to_typst_drops_link_and_image_titles
+      assert_equal '#link("u")[x] #image("pic.png")', markdown_to_typst('[x](u "Title") ![a](pic.png "Title")')
+    end
+
+    def test_markdown_to_typst_converts_autolinks
+      assert_equal '#link("https://typst.app") and #link("mailto:a@b.c")',
+                   markdown_to_typst("<https://typst.app> and <mailto:a@b.c>")
+    end
+
+    # Typst would read "(" or ".name" after #link(...)[...] as part of it.
+    def test_markdown_to_typst_ends_an_expression_that_text_would_continue
+      assert_equal '#link("u")[a];(note) #image("i.png");.png',
+                   markdown_to_typst("[a](u)(note) ![i](i.png).png")
+    end
+
+    def test_markdown_to_typst_leaves_sentence_punctuation_after_a_link_alone
+      assert_equal '#link("u")[a]. Then #link("v")[b], done', markdown_to_typst("[a](u). Then [b](v), done")
     end
 
     # MARK: - escape_typst coverage for the remaining special characters
@@ -817,13 +918,16 @@ module TypstRails
       end
     end
 
-    def test_placeholder_helpers_are_private
-      host_class = Class.new { include TypstRails::Helpers }
+    # Conversion state lives on a MarkdownConverter made for each call, not
+    # on whatever object includes the helpers, such as a view context.
+    def test_markdown_conversion_internals_stay_out_of_including_classes
+      host = Class.new { include TypstRails::Helpers }.new
+      host.markdown_to_typst("**b** [l](u) \u{E000}")
 
-      %i[protect_placeholder_bytes restore_placeholder_bytes].each do |name|
-        refute_respond_to host_class.new, name, "#{name} is an implementation detail"
-        assert host_class.private_method_defined?(name), "#{name} should still exist as a private method"
+      %i[protect_placeholder_bytes restore_placeholder_bytes stash restore_stash].each do |name|
+        refute host.class.private_method_defined?(name), "#{name} should not be mixed into including classes"
       end
+      assert_empty host.instance_variables
     end
 
     # The Renderer includes Helpers so templates can call them through it.

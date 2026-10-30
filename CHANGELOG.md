@@ -41,6 +41,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `@` are syntactically meaningful. See SECURITY.md.
 
 ### Fixed
+- `markdown_to_typst` (and so `html_to_typst` and `include_markdown`) let
+  link and image URLs close the Typst string they were written into. A `"`
+  in a URL broke compilation, and a crafted URL could add Typst code to the
+  document. URLs are now written as escaped string literals, and link titles
+  (`[x](url "title")`) are dropped instead of being pasted into the URL.
+- `markdown_to_typst` passed ordinary text through as Typst syntax, so
+  `#hashtag` ran as code, `$5 or $10` became math, `me@example.com` became a
+  reference, and an unmatched `**` or `_` opened emphasis. Text is now escaped
+  with `escape_typst`, and only the Markdown the converter recognizes becomes
+  Typst markup. This changes output for text that was previously passed
+  through raw: Typst markup given to `markdown_to_typst` is now escaped
+  rather than kept.
+- `markdown_to_typst` now honors Markdown backslash escapes (`\*`, `\#`,
+  `\[`, and a trailing `\` as a hard line break) and converts autolinks
+  (`<https://...>`).
+- `markdown_to_typst` converts `*` and `+` bullets to `-`. Typst has no `*`
+  bullet (the line became bold text), and its `+` makes a numbered item.
+  Ordered items written `1)` become `1.`.
+- Text right after a converted link or image, such as `(note)` or `.field`,
+  is no longer read by Typst as part of the `#link`/`#image` call.
 - `Backends::Cli#available?` searches PATH in Ruby instead of running
   `which` through a shell, so the configured executable path is never
   interpreted by a shell. It also now requires the file to be executable.
