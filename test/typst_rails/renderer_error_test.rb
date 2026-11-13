@@ -4,6 +4,9 @@ require "test_helper"
 
 module TypstRails
   class RendererErrorTest < Minitest::Test
+    # The renderer writes typst_data.json only for templates that mention it.
+    DATA_SOURCE = '#let data = json("typst_data.json")'
+
     def test_initialize_raises_error_with_nil_source
       error = assert_raises(ArgumentError) do
         Renderer.new(nil)
@@ -120,7 +123,7 @@ module TypstRails
     # serialization or during the write depends on ActiveSupport being loaded,
     # and the gem does not depend on ActiveSupport.
     def test_compile_raises_error_on_json_serialization_failure
-      renderer = Renderer.new("= Test")
+      renderer = Renderer.new(DATA_SOURCE)
 
       Hash.any_instance.stubs(:to_json).raises(JSON::GeneratorError.new("Cannot serialize"))
 
@@ -132,7 +135,7 @@ module TypstRails
     end
 
     def test_compile_raises_error_on_file_write_failure
-      renderer = Renderer.new("= Test")
+      renderer = Renderer.new(DATA_SOURCE)
 
       File.stubs(:write).with do |path, _content|
         path.end_with?("typst_data.json")
@@ -395,7 +398,7 @@ module TypstRails
         raise JSON::GeneratorError, "cannot serialize"
       end
 
-      renderer = Renderer.new("= Test")
+      renderer = Renderer.new(DATA_SOURCE)
       error = assert_raises(Error) { renderer.render(nil, { bad: unserializable }) }
 
       assert_includes error.message, "Failed to serialize data to JSON"

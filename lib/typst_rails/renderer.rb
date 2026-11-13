@@ -54,6 +54,11 @@ module TypstRails
     # Maximum source size (10MB) to prevent memory issues
     MAX_SOURCE_SIZE = 10 * 1024 * 1024
 
+    # Name of the JSON file holding template data, read in Typst with
+    # `json("typst_data.json")`. It is written only when the template
+    # source mentions it.
+    DATA_FILE_NAME = "typst_data.json"
+
     # Holds the filesystem paths used during a single compilation run. Each
     # run gets its own directory so concurrent renders never share a
     # typst_data.json.
@@ -152,7 +157,7 @@ module TypstRails
       paths = TempPaths.new
       begin
         write_typst_source_file(paths, typst_source)
-        write_typst_data_file(paths, data)
+        write_typst_data_file(paths, data) if reads_data_file?(typst_source)
         run_typst_compiler(paths)
       rescue Error
         raise
@@ -187,12 +192,18 @@ module TypstRails
       end
     end
 
+    # Assigns can hold whole models, so they are written to disk only for
+    # templates that load them.
+    def reads_data_file?(typst_source)
+      typst_source.include?(DATA_FILE_NAME)
+    end
+
     def write_typst_data_file(paths, data)
       return if data.nil? || data.empty?
 
       # Write the JSON data file next to the Typst source.
       # The Typst template would then use `json("typst_data.json")` to load this data.
-      paths.data_file_path = File.join(paths.dir, "typst_data.json")
+      paths.data_file_path = File.join(paths.dir, DATA_FILE_NAME)
       File.write(paths.data_file_path, data.to_json)
     rescue JSON::GeneratorError => e
       raise Error, "Failed to serialize data to JSON: #{e.message}"

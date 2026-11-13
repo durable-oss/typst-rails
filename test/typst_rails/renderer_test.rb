@@ -4,6 +4,9 @@ require "test_helper"
 
 module TypstRails
   class RendererTest < Minitest::Test
+    # The renderer writes typst_data.json only for templates that mention it.
+    DATA_SOURCE = '#let data = json("typst_data.json")'
+
     def test_initialize_with_string_source
       source = "= Hello World"
       renderer = Renderer.new(source)
@@ -52,7 +55,7 @@ module TypstRails
     end
 
     def test_render_creates_json_data_file_when_data_present
-      source = "= Test"
+      source = DATA_SOURCE
       renderer = Renderer.new(source)
       data = { title: "My Title", count: 42 }
 
@@ -81,6 +84,15 @@ module TypstRails
       mock_successful_typst_compilation
 
       renderer.render(nil, {})
+    end
+
+    # Assigns can carry whole models; keep them off disk unless the
+    # template loads them.
+    def test_render_skips_the_data_file_when_the_template_does_not_read_it
+      File.expects(:write).with { |path, _| path.end_with?("typst_data.json") }.never
+      mock_successful_typst_compilation
+
+      Renderer.new("= Test").render(mock_view_context({ "user" => { "password_digest" => "x" } }), {})
     end
 
     def test_render_cleans_up_temp_files_on_success
@@ -121,12 +133,16 @@ module TypstRails
       end.new
       Backends::Registry.stubs(:resolve).returns(backend)
 
-      Array.new(8) { |i| Thread.new { Renderer.new(i.to_s).render(nil, { id: i }) } }.each(&:join)
+      Array.new(8) { |i| Thread.new { Renderer.new("#{i} typst_data.json").render(nil, { id: i }) } }.each(&:join)
 
       results = Array.new(seen.size) { seen.pop }
 
       assert_equal 8, results.size
-      results.each { |source, id| assert_equal source, id.to_s, "render #{source} read render #{id}'s data" }
+      results.each do |source, id|
+        render_id = source.split.first
+
+        assert_equal render_id, id.to_s, "render #{render_id} read render #{id}'s data"
+      end
     end
 
     def test_render_raises_error_on_compilation_failure
@@ -408,7 +424,7 @@ module TypstRails
       end.returns(["", "", mock_status(true)])
 
       view = Struct.new(:assigns).new({ "string_key" => 1 })
-      Renderer.new("= Test").render(view, { "local_key" => 2 })
+      Renderer.new(DATA_SOURCE).render(view, { "local_key" => 2 })
 
       assert_equal({ "string_key" => 1, "local_key" => 2 }, captured)
     end
@@ -425,7 +441,7 @@ module TypstRails
         true
       end.returns(["", "", mock_status(true)])
 
-      Renderer.new("= Test").render(nil, { title: "Report", count: 3 })
+      Renderer.new(DATA_SOURCE).render(nil, { title: "Report", count: 3 })
 
       assert_equal({ "title" => "Report", "count" => 3 }, captured)
     end
@@ -613,7 +629,7 @@ module TypstRails
         true
       end.returns(["", "", mock_status(true)])
 
-      Renderer.new("= Test").render(nil, { title: "x" })
+      Renderer.new(DATA_SOURCE).render(nil, { title: "x" })
 
       assert_equal root, File.dirname(typ_path)
       assert data_file_present, "typst_data.json should exist in the root directory at compile time"
@@ -692,8 +708,8 @@ module TypstRails
       end.returns(["", "", mock_status(true)])
 
       locals = { due: Date.new(2024, 3, 9) }
-      Renderer.new("= Test").render(nil, locals)
-      Renderer.new("= Test").render(Struct.new(:assigns).new({}), locals)
+      Renderer.new(DATA_SOURCE).render(nil, locals)
+      Renderer.new(DATA_SOURCE).render(Struct.new(:assigns).new({}), locals)
 
       assert_equal captured[0], captured[1]
       assert_equal "2024-03-09", captured[0]["due"]

@@ -47,7 +47,6 @@ end
 
 ```typst
 <%# app/views/reports/monthly.typ %>
-<% data = { title: @title, author: @author } %>
 #let data = json("typst_data.json")
 
 = #data.title
@@ -56,6 +55,12 @@ Author: #data.author
 
 Generated on <%= Time.now.strftime("%Y-%m-%d") %>
 ```
+
+Data reaches the template two ways. ERB runs first, in the view context, so
+instance variables and helpers work as in any view; note that `<%= %>` output
+is not escaped. The controller's instance variables and locals are also
+serialized to `typst_data.json`, which Typst reads with `json()`. That file is
+written only when the template source mentions `typst_data.json`.
 
 ### Rage Integration
 
