@@ -41,6 +41,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `@` are syntactically meaningful. See SECURITY.md.
 
 ### Fixed
+- `TypstRails::Helpers` is now available in Rails views. It was mixed only
+  into `Renderer`, but `.typ` templates evaluate their ERB in the view
+  context, so `escape_typst` raised `NoMethodError` there. Views keep
+  ActionView's `url_encode`.
 - `typst_data.json` is written only when the template source mentions it.
   Every controller instance variable, including whole ActiveRecord models,
   was previously serialized to disk on each render, whether or not the

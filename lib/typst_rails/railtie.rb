@@ -11,6 +11,13 @@ module TypstRails
       end
     end
 
+    initializer "typst_rails.view_helpers" do
+      ActiveSupport.on_load(:action_view) do
+        require "typst_rails/view_helpers"
+        include TypstRails::ViewHelpers
+      end
+    end
+
     rake_tasks do
       load File.expand_path("../tasks/typst_rails/tasks.rake", __dir__)
     end

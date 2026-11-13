@@ -62,6 +62,15 @@ is not escaped. The controller's instance variables and locals are also
 serialized to `typst_data.json`, which Typst reads with `json()`. That file is
 written only when the template source mentions `typst_data.json`.
 
+The `TypstRails::Helpers` methods, such as `escape_typst` and
+`markdown_to_typst`, are available in views:
+
+```typst
+= <%= escape_typst(@title) %>
+```
+
+In views, `url_encode` remains ActionView's own, which encodes spaces as `%20`.
+
 ### Rage Integration
 
 Rage support is automatically enabled when the Rage framework is detected. Template integration follows Rage's conventions.

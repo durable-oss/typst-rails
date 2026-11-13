@@ -9,6 +9,8 @@
 
 $LOAD_PATH.unshift File.expand_path("../../lib", __dir__)
 
+require "erb"
+
 # MARK: - Minimal Rails::Railtie stand-in
 #
 # Captures the initializer and rake_tasks blocks the Railtie declares so they
@@ -68,6 +70,11 @@ module ActiveSupport
 end
 
 module ActionView
+  # Rails runs :action_view load hooks with ActionView::Base as self.
+  class Base
+    include ERB::Util
+  end
+
   class Template
     class << self
       def registered_handlers
@@ -93,12 +100,25 @@ unless ActionView::Template.registered_handlers.empty?
   raise "handler was registered before the action_view load hook ran"
 end
 
+helpers_initializer = TypstRails::Railtie.initializers["typst_rails.view_helpers"]
+raise "Railtie did not declare the view_helpers initializer" unless helpers_initializer
+
 initializer.call
-ActiveSupport.run_load_hooks(:action_view, ActionView::Template)
+helpers_initializer.call
+ActiveSupport.run_load_hooks(:action_view, ActionView::Base)
 
 handler = ActionView::Template.registered_handlers[:typ]
 raise "the :typ template handler was not registered" unless handler
 raise "expected TypstRails::Handler, got #{handler.inspect}" unless handler == TypstRails::Handler
+
+# Helpers must reach the view context, where .typ templates evaluate their ERB.
+view = ActionView::Base.new
+raise "escape_typst is not available in views" unless view.respond_to?(:escape_typst)
+raise "markdown_to_typst is not available in views" unless view.respond_to?(:markdown_to_typst)
+
+# HTML views keep ActionView's url_encode.
+encoded = view.url_encode("a b")
+raise "url_encode changed for views: #{encoded.inspect}" unless encoded == "a%20b"
 
 # The rake_tasks block must point at a file that actually ships.
 raise "Railtie declared no rake_tasks block" if TypstRails::Railtie.rake_task_blocks.empty?
