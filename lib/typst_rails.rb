@@ -87,7 +87,11 @@ module TypstRails
     # @return [String] Path to the Typst executable (defaults to "typst" in PATH)
     attr_accessor :typst_executable_path
 
-    # @return [String, nil] Default root path for Typst template resolution
+    # @return [String, Pathname, nil] Typst root directory. When set, templates
+    #   compile inside it, so they can load files beneath it with root-relative
+    #   paths such as `image("/images/logo.png")`. The directory must be
+    #   writable: each render creates a short-lived working directory in it.
+    #   When nil, each render uses a private directory under Dir.tmpdir.
     attr_accessor :default_root_path
 
     # @return [Symbol, TypstRails::Backends::Base] Which compilation backend to use.
@@ -101,7 +105,7 @@ module TypstRails
     #
     # Default values:
     # - `typst_executable_path`: "typst" (assumes typst is in PATH)
-    # - `default_root_path`: nil (uses temporary directory)
+    # - `default_root_path`: nil (each render gets a private temporary root)
     # - `backend`: `:auto` (prefer the `typst` gem, fall back to the CLI)
     #
     # @return [Configuration] A new configuration instance
@@ -121,7 +125,7 @@ module TypstRails
     #
     # Ensures that:
     # - typst_executable_path is a non-empty string
-    # - default_root_path (if set) is a valid directory path
+    # - default_root_path (if set) is a String or Pathname
     #
     # @return [true] if configuration is valid
     # @raise [ArgumentError] if typst_executable_path is invalid
@@ -136,8 +140,8 @@ module TypstRails
 
       raise ArgumentError, "typst_executable_path cannot be nil or empty" if typst_executable_path.empty?
 
-      if default_root_path && !default_root_path.is_a?(String)
-        raise ArgumentError, "default_root_path must be a String or nil"
+      if default_root_path && !default_root_path.is_a?(String) && !default_root_path.respond_to?(:to_path)
+        raise ArgumentError, "default_root_path must be a String, Pathname, or nil"
       end
 
       true

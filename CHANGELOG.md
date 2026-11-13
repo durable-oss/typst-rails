@@ -41,6 +41,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `@` are syntactically meaningful. See SECURITY.md.
 
 ### Fixed
+- `default_root_path` now sets the Typst root. It was validated but never
+  read, so templates could not load files from the application. It also
+  accepts a `Pathname`; the README's `Rails.root.join(...)` example raised
+  `ArgumentError`.
 - `Backends::Cli#available?` searches PATH in Ruby instead of running
   `which` through a shell, so the configured executable path is never
   interpreted by a shell. It also now requires the file to be executable.

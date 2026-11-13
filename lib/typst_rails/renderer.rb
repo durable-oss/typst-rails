@@ -57,7 +57,7 @@ module TypstRails
     # Holds the filesystem paths used during a single compilation run. Each
     # run gets its own directory so concurrent renders never share a
     # typst_data.json.
-    TempPaths = Struct.new(:dir, :typ_path, :data_file_path)
+    TempPaths = Struct.new(:root, :dir, :typ_path, :data_file_path)
 
     # MARK: - Attributes
 
@@ -166,11 +166,25 @@ module TypstRails
     end
 
     def write_typst_source_file(paths, typst_source)
-      # A private directory per run doubles as the Typst --root, so the
-      # template can load its data with json("typst_data.json").
-      paths.dir = Dir.mktmpdir("typst_rails_")
+      # Each run gets a private directory holding the template and its data,
+      # so json("typst_data.json") resolves next to the template. Typst only
+      # compiles files inside its root, so with a configured root the
+      # directory is created there; otherwise it doubles as the root.
+      paths.root = configured_root_path
+      paths.dir = make_run_dir(paths.root)
+      paths.root ||= paths.dir
       paths.typ_path = File.join(paths.dir, "template.typ")
       File.binwrite(paths.typ_path, typst_source)
+    end
+
+    def make_run_dir(root)
+      return Dir.mktmpdir("typst_rails_") unless root
+
+      begin
+        Dir.mktmpdir("typst_rails_", root)
+      rescue SystemCallError => e
+        raise Error, "Cannot create a working directory in default_root_path #{root}: #{e.message}"
+      end
     end
 
     def write_typst_data_file(paths, data)
@@ -188,7 +202,7 @@ module TypstRails
 
     def run_typst_compiler(paths)
       backend = Backends::Registry.resolve(configured_backend)
-      backend.compile(paths.typ_path, paths.dir)
+      backend.compile(paths.typ_path, paths.root)
     rescue Error => e
       log_error(e.message)
       raise
@@ -202,6 +216,14 @@ module TypstRails
       return nil unless TypstRails.respond_to?(:configuration)
 
       TypstRails.configuration&.backend
+    end
+
+    # @return [String, nil] the configured Typst root as an absolute path
+    def configured_root_path
+      return nil unless TypstRails.respond_to?(:configuration)
+
+      root = TypstRails.configuration&.default_root_path
+      root && File.expand_path(root.to_s)
     end
 
     def cleanup_temp_paths(paths)

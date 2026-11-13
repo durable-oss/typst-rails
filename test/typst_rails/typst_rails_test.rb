@@ -5,6 +5,12 @@ require "test_helper"
 
 module TypstRails
   class TypstRailsTest < Minitest::Test
+    # Renderer now reads default_root_path, so a root left behind here
+    # would redirect later tests' renders.
+    def teardown
+      TypstRails.configuration = nil
+    end
+
     def test_has_a_version_number
       assert TypstRails::VERSION
     end
@@ -248,13 +254,22 @@ module TypstRails
       assert_includes error.message, "must be a String"
     end
 
-    def test_validate_rejects_a_pathname_default_root_path
+    def test_validate_rejects_a_non_path_default_root_path
       config = TypstRails::Configuration.new
       config.default_root_path = Object.new
 
       error = assert_raises(ArgumentError) { config.validate! }
 
-      assert_includes error.message, "default_root_path must be a String or nil"
+      assert_includes error.message, "default_root_path must be a String, Pathname, or nil"
+    end
+
+    # Rails.root.join returns a Pathname, as in the README example.
+    def test_validate_accepts_a_pathname_default_root_path
+      require "pathname"
+      config = TypstRails::Configuration.new
+      config.default_root_path = Pathname.new("/app/typst")
+
+      assert config.validate!
     end
 
     # MARK: - VERSION

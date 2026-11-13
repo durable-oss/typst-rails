@@ -86,6 +86,12 @@ TypstRails.configure do |config|
 end
 ```
 
+`default_root_path` sets the Typst root, so templates can load files beneath
+it with root-relative paths, such as `#image("/images/logo.png")`. Each render
+creates a short-lived working directory inside the root, so it must be
+writable. Without it, each render compiles in a private temporary directory
+and cannot read your application's files.
+
 ### Compilation Backends
 
 `TypstRails` compiles documents through a pluggable backend. Two backends ship
