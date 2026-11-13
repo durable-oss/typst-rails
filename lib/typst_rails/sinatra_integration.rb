@@ -11,12 +11,17 @@ module TypstRails
       return unless defined?(::Sinatra)
 
       require "typst_rails/renderer"
+      require "typst_rails/erb_source"
 
       # Extend Sinatra with Typst rendering capabilities
       ::Sinatra::Base.class_eval do
-        # Helper method to render Typst templates in Sinatra
+        include ::TypstRails::Helpers
+
+        # Renders a Typst template to PDF. The template runs through ERB
+        # first, in the route's scope, with +locals+ as local variables;
+        # +locals+ are also written to typst_data.json.
         def typst(template, locals = {}, _options = {})
-          typst_source = File.read(template)
+          typst_source = ::TypstRails::ErbSource.render(File.read(template), self, locals)
           renderer = ::TypstRails::Renderer.new(typst_source)
 
           # Sinatra doesn't have the same view context as Rails,

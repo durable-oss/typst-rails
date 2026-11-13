@@ -41,6 +41,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `@` are syntactically meaningful. See SECURITY.md.
 
 ### Fixed
+- The Sinatra `typst` helper now runs templates through ERB, with the route's
+  instance variables, the `TypstRails::Helpers` methods, and the locals hash
+  in scope. It previously passed the file to Typst unprocessed, so data could
+  reach the template only through `typst_data.json`.
 - `TypstRails::Helpers` is now available in Rails views. It was mixed only
   into `Renderer`, but `.typ` templates evaluate their ERB in the view
   context, so `escape_typst` raised `NoMethodError` there. Views keep

@@ -163,10 +163,73 @@ module TypstRails
       assert base_class.method_defined?(:typst)
     end
 
+    # MARK: - ERB
+
+    def test_typst_helper_runs_the_template_through_erb
+      base_class = setup_fake_sinatra
+      template_file = create_temp_typst_file("= <%= title %> for <%= @company %>")
+      captured = capture_rendered_source
+
+      instance = base_class.new
+      instance.instance_variable_set(:@company, "Acme")
+      instance.typst(template_file.path, { title: "Report" })
+
+      assert_equal "= Report for Acme", captured.call
+    ensure
+      template_file&.unlink
+    end
+
+    def test_typst_helper_exposes_typst_helpers_to_erb
+      base_class = setup_fake_sinatra
+      template_file = create_temp_typst_file("<%= escape_typst(note) %>")
+      captured = capture_rendered_source
+
+      base_class.new.typst(template_file.path, { note: "#hash" })
+
+      assert_equal "\\#hash", captured.call
+    ensure
+      template_file&.unlink
+    end
+
+    # Keys that are not valid Ruby local names still reach typst_data.json.
+    def test_typst_helper_skips_locals_that_are_not_valid_names
+      base_class = setup_fake_sinatra
+      template_file = create_temp_typst_file("ok")
+      captured = capture_rendered_source
+
+      base_class.new.typst(template_file.path, { "not-a-name" => 1, "Const" => 2 })
+
+      assert_equal "ok", captured.call
+    ensure
+      template_file&.unlink
+    end
+
+    # A template local cannot clobber the ERB renderer's own variables.
+    def test_typst_helper_allows_locals_named_like_internals
+      base_class = setup_fake_sinatra
+      template_file = create_temp_typst_file("<%= source %> <%= scope %> <%= context %>")
+      captured = capture_rendered_source
+
+      base_class.new.typst(template_file.path, { source: "a", scope: "b", context: "c" })
+
+      assert_equal "a b c", captured.call
+    ensure
+      template_file&.unlink
+    end
+
     private
 
     # Builds a fake Sinatra::Base with the #content_type hook the helper calls,
     # runs setup against it, and returns the class.
+    # Stubs the Renderer and returns a lambda yielding the source it got.
+    def capture_rendered_source
+      captured = nil
+      renderer = mock("renderer")
+      renderer.stubs(:render).returns("pdf")
+      Renderer.stubs(:new).with { |src| captured = src }.returns(renderer)
+      -> { captured }
+    end
+
     def setup_fake_sinatra
       base_class = Class.new do
         attr_reader :content_type_set

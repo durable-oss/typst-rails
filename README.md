@@ -91,6 +91,11 @@ get '/report.pdf' do
 end
 ```
 
+The template runs through ERB first, in the route's scope, so instance
+variables, helpers such as `escape_typst`, and the locals hash are all
+available. The locals are also written to `typst_data.json` for templates
+that read it.
+
 ### Configuration
 
 ```ruby
