@@ -69,7 +69,7 @@ module TypstRails
     def test_view_context_assigns_and_locals_reach_the_template
       view_context = Struct.new(:assigns).new({ "title" => "From assigns", "due" => Date.new(2026, 1, 15) })
 
-      render_typst(<<~TYP, { title: "From locals" }, view_context: view_context)
+      render_typst(<<~TYP, { title: "From locals" }, view_context)
         #let data = json("typst_data.json")
         #assert.eq(data.title, "From locals")
         #assert.eq(data.due, "2026-01-15")
@@ -271,7 +271,9 @@ module TypstRails
 
     private
 
-    def render_typst(source, data = {}, view_context: nil)
+    # view_context is positional, not a keyword: on Ruby 2.7 a trailing hash
+    # argument would otherwise be taken as keywords and never reach `data`.
+    def render_typst(source, data = {}, view_context = nil)
       Renderer.new(source).render(view_context, data)
     end
 
