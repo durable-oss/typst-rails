@@ -27,40 +27,6 @@ module TypstRails
   #   safe_text = escape_typst("Price: $100")
   #   # => "Price: \\$100"
   module Helpers
-    # MARK: - Internal placeholders
-    #
-    # markdown_to_typst rewrites emphasis in several regex passes. Each pass
-    # must not re-match markers written by an earlier one, so markers are
-    # staged as these private sentinel bytes and swapped for real Typst syntax
-    # at the very end.
-    #
-    # They are drawn from the Unicode private use area rather than plain
-    # control bytes so they cannot collide with anything a text pipeline is
-    # likely to emit. Any that do appear in the source are held aside by
-    # {#protect_placeholder_bytes} and put back verbatim afterwards.
-    BOLD_OPEN = "\u{E000}"
-    BOLD_CLOSE = "\u{E001}"
-    ITALIC_OPEN = "\u{E002}"
-    ITALIC_CLOSE = "\u{E003}"
-
-    # Sentinel standing in for a placeholder byte that was already present in
-    # the caller's input.
-    LITERAL_PLACEHOLDER = "\u{E004}"
-
-    # Sentinel standing in for a code span or fenced code block, which is held
-    # aside so no conversion pass touches its contents.
-    CODE_PLACEHOLDER = "\u{E005}"
-
-    # All sentinels this module reserves, in a single character class.
-    PLACEHOLDER_PATTERN = /[\u{E000}-\u{E005}]/.freeze
-
-    # Fenced code blocks (``` or ~~~) and single-line inline code spans.
-    # Fences come first so their backticks are not read as inline spans.
-    CODE_PATTERN = /^(`{3,}|~{3,})[^\n]*\n.*?^\1[ \t]*$|(`+)[^`\n][^\n]*?\2(?!`)/m.freeze
-
-    private_constant :BOLD_OPEN, :BOLD_CLOSE, :ITALIC_OPEN, :ITALIC_CLOSE,
-                     :LITERAL_PLACEHOLDER, :CODE_PLACEHOLDER, :PLACEHOLDER_PATTERN, :CODE_PATTERN
-
     # MARK: - Text Escaping
     # Escapes text for safe use in Typst documents.
     #
@@ -191,7 +157,9 @@ module TypstRails
     # - Links (`[text](url)` → `#link("url")[text]`)
     # - Images (`![alt](url)` → `#image("url")`)
     #
-    # Inline code and fenced code blocks pass through untouched.
+    # Inline code and fenced code blocks pass through untouched. Everything
+    # else is escaped, so text such as "#tag", "$5" or "me@example.com" reads
+    # as written rather than as Typst code, math or a reference.
     #
     # @param markdown [String, nil] The Markdown text to convert
     # @return [String] Typst-compatible markup, or empty string if markdown is nil
@@ -222,64 +190,7 @@ module TypstRails
       return "" if markdown.nil?
       raise ArgumentError, "markdown must be a String" unless markdown.is_a?(String)
 
-      # The emphasis passes below use placeholder bytes so that markers written
-      # by one pass are not re-matched by the next. Any such bytes already in
-      # the source would be indistinguishable from our own, so they are held
-      # aside and restored at the end.
-      result = protect_placeholder_bytes(markdown.dup)
-
-      # Code is the same in Typst as in Markdown, and its contents are literal.
-      code_spans = []
-      result = result.gsub(CODE_PATTERN) do |code|
-        code_spans << code
-        CODE_PLACEHOLDER
-      end
-
-      # Convert Markdown headers to Typst headers
-      # # Title -> = Title
-      # ## Subtitle -> == Subtitle
-      # etc.
-      result.gsub!(/^(#{Regexp.quote("#")}{1,6})\s+(.+)$/) do
-        "#{"=" * Regexp.last_match(1).length} #{Regexp.last_match(2)}"
-      end
-
-      # Convert combined bold+italic first: ***text*** and ___text___ are a
-      # single Markdown token, and letting the bold pass see them would consume
-      # only two of the three markers and strand the leftover one mid-word.
-      # ***text*** -> *_text_*
-      #
-      # As in Markdown, an opening marker must be followed, and a closing one
-      # preceded, by non-whitespace, so "2 * 3 * 4" is not emphasis.
-      result.gsub!(/(\*\*\*|___)(?=\S)(.+?)(?<=\S)\1/, "#{BOLD_OPEN}#{ITALIC_OPEN}\\2#{ITALIC_CLOSE}#{BOLD_CLOSE}")
-
-      # Convert Markdown bold to Typst bold, using placeholder bytes so the
-      # italic pass below doesn't re-convert the resulting *text* markers.
-      # **text** or __text__ -> *text*
-      result.gsub!(/(\*\*|__)(?=\S)(.+?)(?<=\S)\1/, "#{BOLD_OPEN}\\2#{BOLD_CLOSE}")
-
-      # Convert Markdown italic to Typst italic (underscore style)
-      # *text* or _text_ -> _text_
-      result.gsub!(/(?<!\*)\*(?![\s*])(.+?)(?<![\s*])\*(?!\*)/, "#{ITALIC_OPEN}\\1#{ITALIC_CLOSE}")
-      result.gsub!(/(?<!_)_(?![\s_])(.+?)(?<![\s_])_(?!_)/, "#{ITALIC_OPEN}\\1#{ITALIC_CLOSE}")
-
-      # Replace emphasis placeholders with their Typst markers
-      result.gsub!(BOLD_OPEN, "*")
-      result.gsub!(BOLD_CLOSE, "*")
-      result.gsub!(ITALIC_OPEN, "_")
-      result.gsub!(ITALIC_CLOSE, "_")
-
-      # Convert Markdown images (must run before links, since ![alt](url)
-      # would otherwise be matched by the link pattern below)
-      # ![alt](url) -> #image("url")
-      result.gsub!(/!\[([^\]]*)\]\(([^)]+)\)/, '#image("\2")')
-
-      # Convert Markdown links
-      # [text](url) -> #link("url")[text]
-      result.gsub!(/\[([^\]]+)\]\(([^)]+)\)/, '#link("\2")[\1]')
-
-      result.gsub!(CODE_PLACEHOLDER) { code_spans.shift }
-
-      restore_placeholder_bytes(result)
+      MarkdownConverter.new(markdown).convert
     end
 
     # Reads and includes Markdown content, converting it to Typst syntax.
@@ -350,42 +261,8 @@ module TypstRails
 
       CGI.escape(text)
     end
-
-    private
-
-    # MARK: - Placeholder handling
-
-    # Stashes any of this module's sentinel characters that the caller's input
-    # already contained, so the emphasis passes cannot mistake them for markers
-    # they wrote themselves.
-    #
-    # Each occurrence is replaced by LITERAL_PLACEHOLDER and its original
-    # character recorded, in order, on +@placeholder_literals+.
-    #
-    # @param text [String] the source text
-    # @return [String] the text with pre-existing sentinels stashed
-    def protect_placeholder_bytes(text)
-      @placeholder_literals = []
-      return text unless text.match?(PLACEHOLDER_PATTERN)
-
-      text.gsub(PLACEHOLDER_PATTERN) do |char|
-        @placeholder_literals << char
-        LITERAL_PLACEHOLDER
-      end
-    end
-
-    # Puts back the characters stashed by {#protect_placeholder_bytes}, in the
-    # order they were found.
-    #
-    # @param text [String] the converted text
-    # @return [String] the text with the caller's original characters restored
-    def restore_placeholder_bytes(text)
-      literals = @placeholder_literals
-      @placeholder_literals = nil
-      return text if literals.nil? || literals.empty?
-
-      index = -1
-      text.gsub(LITERAL_PLACEHOLDER) { literals[index += 1] }
-    end
   end
 end
+
+# Loaded after Helpers is defined, since the converter includes it.
+require "typst_rails/markdown_converter"
