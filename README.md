@@ -73,7 +73,24 @@ In views, `url_encode` remains ActionView's own, which encodes spaces as `%20`.
 
 ### Rage Integration
 
-Rage support is automatically enabled when the Rage framework is detected. Template integration follows Rage's conventions.
+Rage controllers have no template handlers, so when Rage is detected,
+`RageController::API` gains a `render_typst` helper instead:
+
+```ruby
+class ReportsController < RageController::API
+  def monthly
+    @title = "Monthly Report"
+    render_typst "app/views/reports/monthly.typ", { author: "Durable Systems Inc." }
+  end
+end
+```
+
+As with Sinatra, the template runs through ERB in the controller's scope,
+with the locals hash as local variables, and the locals are also written to
+`typst_data.json`. Pass `status:` to set the response status. If
+`typst-rails` loads before Rage's controllers, add
+`include TypstRails::RageIntegration::ControllerHelpers` to your base
+controller.
 
 ### Sinatra Integration
 

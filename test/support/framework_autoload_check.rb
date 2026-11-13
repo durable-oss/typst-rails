@@ -14,9 +14,13 @@ case framework
 when "rage"
   module Rage
     module Application; end
+  end
 
-    def self.configure
-      yield(nil)
+  module RageController
+    class API
+      def self.fake_rage_controller?
+        true
+      end
     end
   end
 when "sinatra"
@@ -36,6 +40,7 @@ require "typst_rails"
 case framework
 when "rage"
   raise "TypstRails::RageIntegration was not loaded" unless defined?(TypstRails::RageIntegration)
+  raise "RageController::API#render_typst was not defined" unless RageController::API.method_defined?(:render_typst)
 when "sinatra"
   raise "TypstRails::SinatraIntegration was not loaded" unless defined?(TypstRails::SinatraIntegration)
   raise "Sinatra::Base#typst was not defined" unless Sinatra::Base.method_defined?(:typst)

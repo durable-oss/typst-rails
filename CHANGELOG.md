@@ -41,6 +41,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `@` are syntactically meaningful. See SECURITY.md.
 
 ### Fixed
+- Rage integration now works. It previously called an empty `Rage.configure`
+  block and registered nothing. Rage has no template handlers, so
+  `RageController::API` now gains `render_typst(template, locals, status:)`,
+  which runs the template through ERB and responds with the PDF.
 - The Sinatra `typst` helper now runs templates through ERB, with the route's
   instance variables, the `TypstRails::Helpers` methods, and the locals hash
   in scope. It previously passed the file to Typst unprocessed, so data could
