@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-14
+
 ### Added
 - Swappable Typst compilation backends: a `:cli` backend (shells out to the
   Typst executable, the original behavior) and a `:gem` backend (uses the
@@ -74,7 +76,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through raw: Typst markup given to `markdown_to_typst` is now escaped
   rather than kept.
 - `markdown_to_typst` now honors Markdown backslash escapes (`\*`, `\#`,
-  `\[`, and a trailing `\` as a hard line break) and converts autolinks
+  `\[`, and a trailing `# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+ as a hard line break) and converts autolinks
   (`<https://...>`).
 - `markdown_to_typst` converts `*` and `+` bullets to `-`. Typst has no `*`
   bullet (the line became bold text), and its `+` makes a numbered item.
