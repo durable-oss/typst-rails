@@ -37,7 +37,10 @@ module TypstRails
       # @param status [Integer, Symbol, nil] response status
       # @return [void]
       # @raise [TypstRails::Error] if compilation fails
-      def render_typst(template, locals = {}, status: nil)
+      def render_typst(template, locals = {}, status: nil, **extra)
+        # Ruby 2.7 binds a trailing symbol-keyed locals hash as keywords;
+        # fold those back into locals.
+        locals = locals.merge(extra) unless extra.empty?
         source = ::TypstRails::ErbSource.render(File.read(template), self, locals)
         pdf_data = ::TypstRails::Renderer.new(source).render(ViewContext.new(locals), locals)
 
