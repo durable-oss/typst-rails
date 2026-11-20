@@ -11,6 +11,8 @@ AllCops:
     - 'bin/**/*'
     - 'tmp/**/*'
     - 'coverage/**/*'
+    - 'worktrees/**/*'
+    - 'local/**/*'
 
 Style/Documentation:
   Enabled: false
