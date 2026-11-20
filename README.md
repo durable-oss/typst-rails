@@ -71,6 +71,17 @@ The `TypstRails::Helpers` methods, such as `escape_typst` and
 
 In views, `url_encode` remains ActionView's own, which encodes spaces as `%20`.
 
+`.typ` partials work like any other partial. Only the outermost `.typ`
+template is compiled; a partial returns its Typst source, which is spliced
+into the parent before the whole document compiles once:
+
+```typst
+<%# app/views/reports/monthly.pdf.typ %>
+= Monthly Report
+
+<%= render partial: "shared/footer" %>  <%# app/views/shared/_footer.pdf.typ %>
+```
+
 ### Rage Integration
 
 Rage controllers have no template handlers, so when Rage is detected,

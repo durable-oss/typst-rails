@@ -35,6 +35,17 @@ module TypstRails
       assert_includes shipped, "lib/tasks/typst_rails/tasks.rake"
     end
 
+    # Bundler.require loads `gem "typst-rails"` by requiring "typst-rails".
+    # Without this file only version.rb (via the gemspec) is loaded, and the
+    # Railtie never registers the .typ handler.
+    def test_gem_name_entry_file_loads_the_library
+      entry = File.expand_path("../../lib/typst-rails.rb", __dir__)
+
+      assert_path_exists entry
+      assert_includes File.read(entry), 'require "typst_rails"'
+      assert_includes `git ls-files lib`.split("\n"), "lib/typst-rails.rb"
+    end
+
     private
 
     def run_subprocess_check(script_name, *args)

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `gem "typst-rails"` in a Gemfile now loads the library. Bundler.require
+  requires "typst-rails", but the entry point was only `typst_rails.rb`, so
+  Rails apps loaded `version.rb` and nothing else: the Railtie never ran and
+  `.typ` views failed with `ActionView::MissingTemplate`. The workaround,
+  `require: "typst_rails"`, is no longer needed.
+- `.typ` partials rendered from a `.typ` view no longer compile to a PDF of
+  their own. Only the outermost `.typ` template compiles; nested ones return
+  their ERB-processed Typst source to be spliced into the parent.
+
 ## [0.2.1] - 2026-11-14
 
 ### Added

@@ -43,23 +43,39 @@ module TypstRails
       #    capturing the result. This allows dynamic Ruby evaluation within the .typ file.
       # 2. Passes the ERB-processed Typst source to our `TypstRails::Renderer`
       #    which then handles the actual Typst compilation.
+      #
+      # Only the outermost .typ template compiles. A .typ partial (or any .typ
+      # template rendered from inside another one) returns its ERB-processed
+      # source, so the parent can splice it in and compile the whole document
+      # once. The flag lives on the view context, which every nested render
+      # shares.
       <<-RUBY_CODE
+        _typst_rails_outermost = !@_typst_rails_rendering
+        @_typst_rails_rendering = true
+
         # Preserve the current @output_buffer if one exists (e.g., if rendering a partial).
         # A new buffer is created for ERB processing of the Typst template to isolate its output.
         _original_typst_handler_output_buffer = @output_buffer
         @output_buffer = ActionView::OutputBuffer.new
 
-        #{erb_evaluation_code}
+        begin
+          #{erb_evaluation_code}
 
-        # After the above ERB code executes, @output_buffer contains the
-        # ERB-processed Typst template source as a string.
-        processed_typst_source = @output_buffer.to_s
+          # After the above ERB code executes, @output_buffer contains the
+          # ERB-processed Typst template source as a string.
+          processed_typst_source = @output_buffer.to_s
+        ensure
+          # Restore the original output buffer that was in place before this handler ran.
+          @output_buffer = _original_typst_handler_output_buffer
+          @_typst_rails_rendering = false if _typst_rails_outermost
+        end
 
-        # Restore the original output buffer that was in place before this handler ran.
-        @output_buffer = _original_typst_handler_output_buffer
-
-        typst_renderer = ::TypstRails::Renderer.new(processed_typst_source)
-        typst_renderer.render(self, local_assigns)
+        if _typst_rails_outermost
+          typst_renderer = ::TypstRails::Renderer.new(processed_typst_source)
+          typst_renderer.render(self, local_assigns)
+        else
+          processed_typst_source
+        end
       RUBY_CODE
     end
 

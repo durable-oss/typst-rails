@@ -64,3 +64,8 @@ Style/FrozenStringLiteralComment:
 # gemspec (spec.add_development_dependency) rather than the Gemfile.
 Gemspec/DevelopmentDependencies:
   Enabled: false
+
+# lib/typst-rails.rb must match the gem name so Bundler.require loads it.
+Naming/FileName:
+  Exclude:
+    - lib/typst-rails.rb

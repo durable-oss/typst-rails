@@ -90,6 +90,39 @@ module TypstRails
 
       assert_equal original_buffer, view.instance_variable_get(:@output_buffer)
     end
+    # MARK: - Nested .typ templates
+
+    # A .typ partial rendered from a .typ view must hand back Typst source for
+    # the parent to splice in, not a PDF of its own.
+    def test_nested_typ_render_returns_source_and_only_outermost_compiles
+      partial_code = Handler.call(FakeTemplate.new("_footer <%= 1 + 1 %>_"))
+      view = FakeView.new
+      view.define_singleton_method(:render_footer) { instance_eval(partial_code) }
+      parent = FakeTemplate.new("= Report\n<%= render_footer %>")
+
+      Renderer.expects(:new).once.with("= Report\n_footer 2_").returns(
+        mock("renderer").tap { |r| r.expects(:render).returns("pdf") }
+      )
+
+      assert_equal "pdf", view.instance_eval(Handler.call(parent))
+    end
+
+    def test_nesting_flag_resets_after_outermost_render
+      view = FakeView.new
+      Renderer.stubs(:new).returns(mock("renderer").tap { |r| r.stubs(:render).returns("pdf") })
+
+      2.times { assert_equal "pdf", view.instance_eval(Handler.call(FakeTemplate.new("= Again"))) }
+    end
+
+    def test_nesting_flag_and_buffer_reset_when_erb_raises
+      view = FakeView.new
+      view.instance_variable_set(:@output_buffer, "original")
+
+      assert_raises(RuntimeError) { view.instance_eval(Handler.call(FakeTemplate.new("<% raise 'boom' %>"))) }
+      assert_equal "original", view.instance_variable_get(:@output_buffer)
+      refute view.instance_variable_get(:@_typst_rails_rendering)
+    end
+
     # MARK: - ERB semantics
 
     # Trim mode "-" is what Rails' own ERB handler uses; `<% ... -%>` must
