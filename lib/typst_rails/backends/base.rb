@@ -25,6 +25,20 @@ module TypstRails
       def compile(typ_path, root_dir)
         raise NotImplementedError, "#{self.class} must implement #compile"
       end
+
+      private
+
+      # Options from {TypstRails::Configuration#compile_options}, or an empty
+      # Hash when nothing is configured. TypstRails.configuration is checked
+      # with respond_to? first because the top-level module is not loaded when
+      # "typst_rails/renderer" is required on its own.
+      #
+      # @return [Hash{Symbol => Object}]
+      def configured_compile_options
+        return {} unless TypstRails.respond_to?(:configuration)
+
+        TypstRails.configuration&.compile_options || {}
+      end
     end
   end
 end

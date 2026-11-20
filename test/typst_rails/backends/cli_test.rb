@@ -325,14 +325,14 @@ module TypstRails
       def test_compile_omits_pdf_standard_flag_by_default
         TypstRails.configure { |c| c.typst_executable_path = "typst" }
 
-        refute_includes capture_compile_command, "--pdf-standard"
+        refute_includes capture_pdf_compile_command, "--pdf-standard"
       ensure
         reset_configuration!
       end
 
       def test_compile_passes_a_single_pdf_standard
         TypstRails.configure { |c| c.pdf_standard = :ua_1 }
-        cmd = capture_compile_command
+        cmd = capture_pdf_compile_command
 
         assert_equal "ua-1", cmd[cmd.index("--pdf-standard") + 1]
       ensure
@@ -342,7 +342,7 @@ module TypstRails
       # Typst accepts several standards as one comma-separated value.
       def test_compile_passes_several_pdf_standards_as_one_comma_separated_flag
         TypstRails.configure { |c| c.pdf_standard = %i[a_2b ua_1] }
-        cmd = capture_compile_command
+        cmd = capture_pdf_compile_command
 
         assert_equal 1, cmd.count("--pdf-standard")
         assert_equal "a-2b,ua-1", cmd[cmd.index("--pdf-standard") + 1]
@@ -353,7 +353,7 @@ module TypstRails
       # The source and output paths stay last, after every option.
       def test_pdf_standard_flag_comes_before_the_source_path
         TypstRails.configure { |c| c.pdf_standard = :ua_1 }
-        cmd = capture_compile_command
+        cmd = capture_pdf_compile_command
 
         source_index = cmd.index { |arg| arg.end_with?(".typ") }
 
@@ -365,7 +365,7 @@ module TypstRails
       def test_compile_without_configuration_omits_pdf_standard_flag
         reset_configuration!
 
-        refute_includes capture_compile_command, "--pdf-standard"
+        refute_includes capture_pdf_compile_command, "--pdf-standard"
       end
 
       def test_compile_produces_a_pdf_ua_document_with_the_real_cli
@@ -533,6 +533,72 @@ module TypstRails
         end
       end
 
+      # MARK: - Font options
+
+      def test_compile_passes_each_font_path_as_its_own_flag
+        TypstRails.configure do |c|
+          c.font_paths = ["/fonts/one", "/fonts/two:with-colon"]
+        end
+
+        Dir.mktmpdir do |dir|
+          cmd, typ_path = capture_compile_command(dir)
+
+          assert_equal ["typst", "compile", "--root", dir,
+                        "--font-path", "/fonts/one", "--font-path", "/fonts/two:with-colon",
+                        typ_path, File.join(dir, "doc_output.pdf")], cmd
+        end
+      ensure
+        reset_configuration!
+      end
+
+      def test_compile_expands_relative_font_paths
+        TypstRails.configure { |c| c.font_paths = "vendor/fonts" }
+
+        Dir.mktmpdir do |dir|
+          cmd, = capture_compile_command(dir)
+
+          assert_equal File.expand_path("vendor/fonts"), cmd[cmd.index("--font-path") + 1]
+        end
+      ensure
+        reset_configuration!
+      end
+
+      def test_compile_passes_ignore_system_fonts_when_set
+        TypstRails.configure { |c| c.ignore_system_fonts = true }
+
+        Dir.mktmpdir do |dir|
+          cmd, = capture_compile_command(dir)
+
+          assert_includes cmd, "--ignore-system-fonts"
+          refute_includes cmd, "--font-path"
+        end
+      ensure
+        reset_configuration!
+      end
+
+      def test_compile_omits_font_flags_by_default
+        TypstRails.configure { |c| c.typst_executable_path = "typst" }
+
+        Dir.mktmpdir do |dir|
+          cmd, typ_path = capture_compile_command(dir)
+
+          assert_equal ["typst", "compile", "--root", dir, typ_path, File.join(dir, "doc_output.pdf")], cmd
+        end
+      ensure
+        reset_configuration!
+      end
+
+      def test_compile_omits_font_flags_without_configuration
+        TypstRails.configuration = nil
+
+        Dir.mktmpdir do |dir|
+          cmd, = capture_compile_command(dir)
+
+          refute_includes cmd, "--font-path"
+          refute_includes cmd, "--ignore-system-fonts"
+        end
+      end
+
       def test_compile_returns_binary_pdf_bytes_unchanged
         backend = Cli.new
         bytes = "%PDF-1.7\n\x00\xFF\xFE binary".b
@@ -585,6 +651,21 @@ module TypstRails
         assert_kind_of Base, Cli.new
       end
 
+      def test_compile_passes_font_and_pdf_standard_options_together
+        TypstRails.configure do |c|
+          c.font_paths = ["/fonts"]
+          c.ignore_system_fonts = true
+          c.pdf_standard = :ua_1
+        end
+
+        cmd = capture_pdf_compile_command
+        options = cmd[(cmd.index("--root") + 2)...-2]
+
+        assert_equal ["--font-path", "/fonts", "--ignore-system-fonts", "--pdf-standard", "ua-1"], options
+      ensure
+        reset_configuration!
+      end
+
       private
 
       def requires_typst_cli!
@@ -603,7 +684,7 @@ module TypstRails
       end
 
       # Runs a stubbed compile and returns the command it would have run.
-      def capture_compile_command
+      def capture_pdf_compile_command
         captured_cmd = nil
 
         Open3.stubs(:capture3).with do |*args|
@@ -624,6 +705,23 @@ module TypstRails
 
       def reset_configuration!
         TypstRails.configuration = nil
+      end
+
+      # Compiles doc.typ in +dir+ against a stubbed Open3 and returns the
+      # command that would have run, plus the source path.
+      def capture_compile_command(dir)
+        captured_cmd = nil
+        Open3.stubs(:capture3).with do |*args|
+          captured_cmd = args
+          File.binwrite(args.last, "pdf bytes")
+          true
+        end.returns(["", "", mock_status(true)])
+
+        typ_path = File.join(dir, "doc.typ")
+        File.write(typ_path, "= Test")
+        Cli.new(executable_path: "typst").compile(typ_path, dir)
+
+        [captured_cmd, typ_path]
       end
 
       # Yields a temporary directory set as the only PATH entry, holding an

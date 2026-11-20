@@ -139,6 +139,54 @@ creates a short-lived working directory inside the root, so it must be
 writable. Without it, each render compiles in a private temporary directory
 and cannot read your application's files.
 
+#### Fonts
+
+Typst finds fonts in three places: the fonts installed on the system, the
+fonts embedded in Typst itself (Libertinus Serif, New Computer Modern and
+DejaVu Sans Mono), and any extra directories you name.
+
+```ruby
+TypstRails.configure do |config|
+  config.font_paths = [Rails.root.join("app", "assets", "fonts")]
+  config.ignore_system_fonts = true
+end
+```
+
+- `font_paths` lists directories that Typst searches, recursively, for font
+  files. It defaults to `[]`. A single path is accepted and wrapped in an
+  Array. Relative paths are expanded against the process working directory.
+- `ignore_system_fonts` stops Typst from searching the system's fonts, so
+  only `font_paths` and Typst's embedded fonts are used. It defaults to
+  `false`.
+
+Both settings apply to the `:cli` backend (as `--font-path` and
+`--ignore-system-fonts`) and the `:gem` backend (as the `font_paths:` and
+`ignore_system_fonts:` options of `Typst::Pdf.new`).
+
+#### Fonts in production and Docker
+
+A slim production image usually has few fonts installed, and often not the
+ones a template was designed with. Typst does not fail when a font is
+missing: it warns and falls back to another font, so the PDF renders but
+looks different from the one you saw in development.
+
+To get the same output everywhere, keep the font files with the
+application and point `font_paths` at them:
+
+1. Copy the `.ttf` or `.otf` files your templates use into the app, for
+   example `app/assets/fonts/`, and commit them. Check that each font's
+   license allows you to redistribute it.
+2. Set `config.font_paths` to that directory.
+3. Optionally set `config.ignore_system_fonts = true`. Typst then skips
+   scanning the system's font directories on each compile, and a document
+   can no longer pick up a font that happens to be installed on one machine
+   but not another. A font your templates name that is missing from
+   `font_paths` then falls back in development too, so you see the problem
+   before you deploy.
+
+Nothing extra needs to be installed in the Docker image for this, since the
+fonts ship inside the application directory.
+
 #### Accessible and archival PDFs
 
 Set `pdf_standard` to have Typst enforce a PDF standard. Use `:ua_1` for

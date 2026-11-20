@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`:ua_1`) and PDF/A (`:a_2b` and others). Accepts a symbol or an array of
   symbols, and works with both the CLI and gem backends. PDF/UA-1 requires the
   template to set a document title.
+- `config.font_paths` to add directories that Typst searches for fonts, and
+  `config.ignore_system_fonts` to skip the system's fonts. Both backends pass
+  them to Typst: the CLI as `--font-path` and `--ignore-system-fonts`, the
+  `typst` gem as its `font_paths:` and `ignore_system_fonts:` options.
 - `TypstRails::Configuration#compile_options`, the compiler options that
   backends pass through to Typst.
 

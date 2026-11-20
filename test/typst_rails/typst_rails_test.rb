@@ -286,7 +286,7 @@ module TypstRails
       config = TypstRails::Configuration.new
       config.pdf_standard = :ua_1
 
-      assert_equal({ pdf_standards: ["ua-1"] }, config.compile_options)
+      assert_equal ["ua-1"], config.compile_options[:pdf_standards]
     end
 
     def test_compile_options_maps_an_array_of_symbols_in_order
@@ -366,6 +366,97 @@ module TypstRails
       spec = ::Gem::Specification.load(File.expand_path("../../typst-rails.gemspec", __dir__))
 
       assert_equal TypstRails::VERSION, spec.version.to_s
+    end
+
+    def test_font_settings_have_defaults
+      config = TypstRails::Configuration.new
+
+      assert_empty config.font_paths
+      assert_same false, config.ignore_system_fonts
+    end
+
+    def test_font_paths_accepts_an_array_of_strings_and_pathnames
+      require "pathname"
+      config = TypstRails.configure do |c|
+        c.font_paths = ["/app/fonts", Pathname.new("/app/more-fonts")]
+      end
+
+      assert_equal ["/app/fonts", Pathname.new("/app/more-fonts")], config.font_paths
+    end
+
+    def test_a_single_font_path_is_wrapped_in_an_array
+      config = TypstRails::Configuration.new
+      config.font_paths = "/app/fonts"
+
+      assert_equal ["/app/fonts"], config.font_paths
+    end
+
+    def test_a_single_pathname_font_path_is_wrapped_in_an_array
+      require "pathname"
+      config = TypstRails::Configuration.new
+      config.font_paths = Pathname.new("/app/fonts")
+
+      assert_equal [Pathname.new("/app/fonts")], config.font_paths
+    end
+
+    def test_nil_font_paths_becomes_an_empty_list
+      config = TypstRails::Configuration.new
+      config.font_paths = nil
+
+      assert_empty config.font_paths
+      assert config.validate!
+    end
+
+    def test_validate_rejects_non_path_font_paths
+      [[123], ["/app/fonts", :symbol], [nil], [""], 123].each do |value|
+        config = TypstRails::Configuration.new
+        config.font_paths = value
+
+        error = assert_raises(ArgumentError, "expected #{value.inspect} to be rejected") { config.validate! }
+        assert_includes error.message, "font_paths"
+      end
+    end
+
+    # The setter wraps values, but the Array it returns can still be mutated.
+    def test_validate_rejects_a_bad_entry_appended_after_assignment
+      config = TypstRails::Configuration.new
+      config.font_paths << 42
+
+      assert_raises(ArgumentError) { config.validate! }
+    end
+
+    def test_ignore_system_fonts_accepts_booleans
+      [true, false].each do |value|
+        config = TypstRails.configure { |c| c.ignore_system_fonts = value }
+
+        assert_same value, config.ignore_system_fonts
+      end
+    end
+
+    def test_validate_rejects_non_boolean_ignore_system_fonts
+      [nil, "true", 1, :yes].each do |value|
+        config = TypstRails::Configuration.new
+        config.ignore_system_fonts = value
+
+        error = assert_raises(ArgumentError, "expected #{value.inspect} to be rejected") { config.validate! }
+        assert_includes error.message, "ignore_system_fonts"
+      end
+    end
+
+    def test_compile_options_defaults
+      assert_equal({ pdf_standards: [], font_paths: [], ignore_system_fonts: false },
+                   TypstRails::Configuration.new.compile_options)
+    end
+
+    def test_compile_options_expands_font_paths_to_absolute_strings
+      require "pathname"
+      config = TypstRails::Configuration.new
+      config.font_paths = ["vendor/fonts", Pathname.new("/app/fonts")]
+      config.ignore_system_fonts = true
+
+      assert_equal({ pdf_standards: [], font_paths: [File.expand_path("vendor/fonts"), "/app/fonts"],
+                     ignore_system_fonts: true },
+                   config.compile_options)
     end
 
     private

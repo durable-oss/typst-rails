@@ -131,6 +131,17 @@ module TypstRails
     #   `#set document(title: ...)`; compilation fails without one.
     attr_accessor :pdf_standard
 
+    # @return [Array<String, Pathname>] Extra directories Typst searches,
+    #   recursively, for font files. Defaults to an empty list. Assigning a
+    #   single path wraps it in an Array. Relative paths are expanded against
+    #   the process working directory when a document is compiled.
+    attr_reader :font_paths
+
+    # @return [Boolean] Whether Typst should skip the fonts installed on the
+    #   system and use only {#font_paths} plus the fonts embedded in Typst.
+    #   Defaults to false.
+    attr_accessor :ignore_system_fonts
+
     # Initializes a new Configuration with default values.
     #
     # Default values:
@@ -138,6 +149,8 @@ module TypstRails
     # - `default_root_path`: nil (each render gets a private temporary root)
     # - `backend`: `:auto` (prefer the `typst` gem, fall back to the CLI)
     # - `pdf_standard`: nil (plain PDF, no conformance enforced)
+    # - `font_paths`: [] (no extra font directories)
+    # - `ignore_system_fonts`: false (system fonts are searched)
     #
     # @return [Configuration] A new configuration instance
     #
@@ -151,6 +164,21 @@ module TypstRails
       @default_root_path = nil
       @backend = :auto
       @pdf_standard = nil
+      @font_paths = []
+      @ignore_system_fonts = false
+    end
+
+    # Sets the font directories. A single String or Pathname is wrapped in an
+    # Array, and nil clears the list.
+    #
+    # @param paths [Array<String, Pathname>, String, Pathname, nil]
+    # @return [void]
+    #
+    # @example
+    #   config.font_paths = Rails.root.join("app", "assets", "fonts")
+    #   config.font_paths #=> [#<Pathname:/app/app/assets/fonts>]
+    def font_paths=(paths)
+      @font_paths = paths.is_a?(Array) ? paths : Array(paths)
     end
 
     # Options that backends pass through to the Typst compiler.
@@ -158,14 +186,22 @@ module TypstRails
     # @return [Hash{Symbol => Object}] compiler options:
     #   - `:pdf_standards` [Array<String>] Typst PDF standard identifiers
     #     (e.g. `["ua-1"]`), empty when {#pdf_standard} is nil
+    #   - `:font_paths` [Array<String>] font directories, expanded to absolute paths
+    #   - `:ignore_system_fonts` [Boolean]
     # @raise [ArgumentError] if {#pdf_standard} contains an unknown key
     #
     # @example
     #   config = TypstRails::Configuration.new
-    #   config.pdf_standard = [:a_2b, :ua_1]
-    #   config.compile_options #=> { pdf_standards: ["a-2b", "ua-1"] }
+    #   config.pdf_standard = :ua_1
+    #   config.font_paths = ["vendor/fonts"]
+    #   config.compile_options
+    #   #=> { pdf_standards: ["ua-1"], font_paths: ["/app/vendor/fonts"], ignore_system_fonts: false }
     def compile_options
-      { pdf_standards: pdf_standards }
+      {
+        pdf_standards: pdf_standards,
+        font_paths: font_paths.map { |path| File.expand_path(path) },
+        ignore_system_fonts: ignore_system_fonts
+      }
     end
 
     # Validates the configuration settings.
@@ -174,11 +210,14 @@ module TypstRails
     # - typst_executable_path is a non-empty string
     # - default_root_path (if set) is a String or Pathname
     # - pdf_standard (if set) is a key, or Array of keys, of {PDF_STANDARDS}
+    # - font_paths is an Array of Strings or Pathnames
+    # - ignore_system_fonts is true or false
     #
     # @return [true] if configuration is valid
     # @raise [ArgumentError] if typst_executable_path is invalid
     # @raise [ArgumentError] if default_root_path is invalid
     # @raise [ArgumentError] if pdf_standard is invalid
+    # @raise [ArgumentError] if font_paths or ignore_system_fonts is invalid
     #
     # @example Validate configuration
     #   config = Configuration.new
@@ -194,6 +233,8 @@ module TypstRails
       end
 
       pdf_standards
+      validate_font_options!
+
       true
     end
 
@@ -206,6 +247,20 @@ module TypstRails
                                "#{PDF_STANDARDS.keys.map(&:inspect).join(", ")} (got #{standard.inspect})"
         end
       end.uniq
+    end
+
+    def validate_font_options!
+      unless font_paths.is_a?(Array) && font_paths.all? { |path| path_like?(path) }
+        raise ArgumentError, "font_paths must be an Array of Strings or Pathnames"
+      end
+
+      return if [true, false].include?(ignore_system_fonts)
+
+      raise ArgumentError, "ignore_system_fonts must be true or false"
+    end
+
+    def path_like?(path)
+      (path.is_a?(String) && !path.empty?) || path.respond_to?(:to_path)
     end
   end
 end

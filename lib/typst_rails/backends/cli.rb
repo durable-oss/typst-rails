@@ -35,6 +35,10 @@ module TypstRails
         executable_on_path?(path)
       end
 
+      # Passes {TypstRails::Configuration#compile_options} to Typst as
+      # command-line flags: one `--font-path` per font directory, and
+      # `--ignore-system-fonts` when that option is set.
+      #
       # @see Base#compile
       def compile(typ_path, root_dir)
         output_pdf_path = File.join(root_dir, "#{File.basename(typ_path, ".typ")}_output.pdf")
@@ -69,17 +73,17 @@ module TypstRails
         TypstRails.configuration&.typst_executable_path
       end
 
-      # Same guard as {#configured_executable_path}.
-      def configured_compile_options
-        return {} unless TypstRails.respond_to?(:configuration)
-
-        TypstRails.configuration&.compile_options || {}
-      end
-
-      # Typst takes several standards as one comma-separated value.
+      # Flags for the configured compile options. Each font directory gets its
+      # own --font-path flag rather than one PATH_SEPARATOR-joined value, so a
+      # directory whose name contains the separator still reaches Typst
+      # intact. Typst takes several PDF standards as one comma-separated value.
       def compile_option_args
-        standards = configured_compile_options.fetch(:pdf_standards, [])
-        standards.empty? ? [] : ["--pdf-standard", standards.join(",")]
+        options = configured_compile_options
+        flags = Array(options[:font_paths]).flat_map { |path| ["--font-path", path] }
+        flags << "--ignore-system-fonts" if options[:ignore_system_fonts]
+        standards = Array(options[:pdf_standards])
+        flags.push("--pdf-standard", standards.join(",")) unless standards.empty?
+        flags
       end
 
       def directory_path?(path)

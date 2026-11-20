@@ -203,7 +203,73 @@ module TypstRails
         TypstRails.configuration = nil
       end
 
+      def test_compile_passes_font_options_to_the_gem
+        TypstRails.configure do |c|
+          c.font_paths = ["/fonts/one", "vendor/fonts"]
+          c.ignore_system_fonts = true
+        end
+
+        options = capture_pdf_options { Gem.new.compile("/tmp/doc.typ", "/tmp") }
+
+        assert_equal({ file: "/tmp/doc.typ", root: "/tmp",
+                       font_paths: ["/fonts/one", File.expand_path("vendor/fonts")],
+                       ignore_system_fonts: true }, options)
+      ensure
+        TypstRails.configuration = nil
+      end
+
+      def test_compile_passes_default_font_options_when_configured
+        TypstRails.configure { |c| c.backend = :gem }
+
+        options = capture_pdf_options { Gem.new.compile("/tmp/doc.typ", "/tmp") }
+
+        assert_equal [], options[:font_paths]
+        assert_same false, options[:ignore_system_fonts]
+      ensure
+        TypstRails.configuration = nil
+      end
+
+      def test_compile_passes_only_file_and_root_without_configuration
+        TypstRails.configuration = nil
+
+        options = capture_pdf_options { Gem.new.compile("/tmp/doc.typ", "/tmp") }
+
+        assert_equal({ file: "/tmp/doc.typ", root: "/tmp" }, options)
+      end
+
+      def test_compile_passes_font_and_pdf_standard_options_together
+        TypstRails.configure do |c|
+          c.font_paths = ["/fonts"]
+          c.ignore_system_fonts = true
+          c.pdf_standard = :ua_1
+        end
+
+        assert_equal({ file: "/tmp/doc.typ", root: "/tmp", font_paths: ["/fonts"],
+                       ignore_system_fonts: true, pdf_standards: ["ua-1"] }, capture_gem_options)
+      ensure
+        TypstRails.configuration = nil
+      end
+
       private
+
+      # Replaces Typst::Pdf with a fake that records its keyword arguments.
+      def capture_pdf_options(&block)
+        captured = nil
+        pdf_class = Class.new do
+          define_method(:initialize) { |**options| captured = options }
+
+          def compiled
+            self
+          end
+
+          def document
+            "%PDF-fake"
+          end
+        end
+
+        with_defined_constant(:Typst, Module.new { const_set(:Pdf, pdf_class) }, &block)
+        captured
+      end
 
       # Compiles against a stand-in Typst::Pdf and returns the options it got.
       def capture_gem_options
