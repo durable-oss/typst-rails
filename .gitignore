@@ -32,3 +32,6 @@
 # invocations while iterating on e2e-tests/docker/ outside the containers)
 /e2e-tests/docker/.bundle/
 /e2e-tests/docker/*.lock
+
+# Local sandbox apps for manual testing (e.g. local/sample-app)
+/local/
