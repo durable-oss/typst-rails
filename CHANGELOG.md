@@ -30,6 +30,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   compile and the template's name. By default it logs them. The `typst` gem
   does not expose warnings on success, so it is not called for the `:gem`
   backend.
+- `TypstRails.render(template, locals:, assigns:, root:)` renders a `.typ`
+  template file to PDF outside a request, for background jobs, mailers, and
+  scripts. The template runs through ERB, then compiles, with locals and
+  assigns also written to `typst_data.json`. Relative paths resolve against
+  `app/views` in Rails and the current directory elsewhere, the `.typ`
+  extension is optional, and paths that lead outside the root raise
+  `ArgumentError`.
+- `TypstRails.render_with_rails(template, locals:, assigns:, controller:)`
+  renders a `.typ` view through a Rails controller, so app helpers, route
+  helpers, and partials work outside a request. It raises
+  `TypstRails::Error` when ActionController is not loaded.
+- `TypstRails.render_and_attach(attachable, template, filename:, ...)`
+  renders a template and passes the PDF to `attachable.attach`, such as an
+  ActiveStorage attachment. Pass `via: :rails` to render through
+  `render_with_rails`.
 
 ### Changed
 - Compile error messages name the template and the location of the first
@@ -61,6 +76,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   handled through their own `as_json`.
 - Data for templates that do not mention `typst_data.json` is no longer
   converted at all, so it cannot raise.
+- The Sinatra `typst` and Rage `render_typst` helpers now share the template
+  rendering code behind `TypstRails.render`. Their behavior is unchanged.
 
 ### Fixed
 - `gem "typst-rails"` in a Gemfile now loads the library. Bundler.require

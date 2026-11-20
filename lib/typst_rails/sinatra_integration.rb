@@ -1,17 +1,17 @@
 # frozen_string_literal: true
 
+require "typst_rails/template_rendering"
+
 module TypstRails
   # Integration for Sinatra framework
   module SinatraIntegration
     # Simple view context wrapper providing the `assigns` reader that
-    # Renderer expects, mirroring Rails' view context interface.
-    ViewContext = Struct.new(:assigns)
+    # Renderer expects, mirroring Rails' view context interface. Kept for
+    # compatibility; the helper now goes through {TemplateRendering}.
+    ViewContext = ::TypstRails::TemplateRendering::ViewContext
 
     def self.setup
       return unless defined?(::Sinatra)
-
-      require "typst_rails/renderer"
-      require "typst_rails/erb_source"
 
       # Extend Sinatra with Typst rendering capabilities
       ::Sinatra::Base.class_eval do
@@ -21,13 +21,7 @@ module TypstRails
         # first, in the route's scope, with +locals+ as local variables;
         # +locals+ are also written to typst_data.json.
         def typst(template, locals = {}, _options = {})
-          typst_source = ::TypstRails::ErbSource.render(File.read(template), self, locals)
-          renderer = ::TypstRails::Renderer.new(typst_source, template: template)
-
-          # Sinatra doesn't have the same view context as Rails,
-          # so we create a simple wrapper
-          view_context = ::TypstRails::SinatraIntegration::ViewContext.new(locals)
-          pdf_data = renderer.render(view_context, locals)
+          pdf_data = ::TypstRails::TemplateRendering.render_file(template, self, locals, locals)
 
           content_type "application/pdf"
           pdf_data

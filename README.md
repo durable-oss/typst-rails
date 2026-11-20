@@ -154,6 +154,128 @@ variables, helpers such as `escape_typst`, and the locals hash are all
 available. The locals are also written to `typst_data.json` for templates
 that read it.
 
+### Rendering outside a request
+
+Background jobs, mailers, rake tasks, and scripts have no controller to
+render with. `TypstRails.render` takes a template path and returns the PDF
+as a binary string:
+
+```ruby
+pdf = TypstRails.render("reports/monthly",
+                        locals: { month: "October" },
+                        assigns: { title: "Monthly Report" })
+File.binwrite("monthly.pdf", pdf)
+```
+
+The template runs through ERB first. `locals` become local variables,
+`assigns` become instance variables, and the `TypstRails::Helpers` methods,
+such as `escape_typst`, are available. Both hashes are also written to
+`typst_data.json`, as in a controller render, with locals winning on a name
+clash:
+
+```typst
+<%# app/views/reports/monthly.typ %>
+#let data = json("typst_data.json")
+
+= <%= @title %>
+
+Figures for <%= escape_typst(month) %>, also readable as #data.month.
+```
+
+Relative paths resolve against `app/views` in a Rails app and against the
+current directory elsewhere; pass `root:` to use another directory. The
+`.typ` extension is optional, and `reports/monthly.pdf.typ` is found if
+`reports/monthly.typ` does not exist. A relative path that leads outside the
+root, such as `"../../config/master"`, raises `ArgumentError`. Absolute paths
+are used as given, so do not pass user input as one.
+
+These templates are not rendered by ActionView, so your app's helpers,
+route helpers, and `render` for partials are not available.
+
+#### Rendering through Rails
+
+`TypstRails.render_with_rails` renders the template the way a controller
+action does, so those helpers work. It takes a Rails template name, found
+by Rails' own view lookup, and returns the PDF as a binary string:
+
+```ruby
+pdf = TypstRails.render_with_rails("reports/monthly",
+                                   locals: { month: "October" },
+                                   assigns: { title: "Monthly Report" })
+```
+
+It calls `ApplicationController.render(template:, formats: [:pdf], locals:,
+assigns:)`. If your `ApplicationController` inherits from
+`ActionController::API`, which cannot render views, it uses
+`ActionController::Base` instead. Pass `controller:` to pick another one,
+for example one that adds the helpers the template needs. Calling
+`ApplicationController.render` yourself with the same arguments gives the
+same result.
+
+Which one to use:
+
+- `TypstRails.render` works in any Ruby program, takes a file path, and
+  checks that relative paths stay inside the root. Templates get
+  `TypstRails::Helpers` and nothing else.
+- `TypstRails.render_with_rails` needs ActionController. Use it when the
+  template calls your helpers, builds URLs, or renders partials. It raises
+  `TypstRails::Error` if ActionController is not loaded.
+
+There is no request, so helpers that build full URLs, such as
+`report_url`, need a host from `Rails.application.routes.default_url_options`.
+
+Write partials as `.typ` files, such as `_footer.pdf.typ`; see the Rails
+usage section above. An `.erb` partial also works, but Rails escapes `<%= %>`
+output in `.erb` files as HTML, turning `&` into `&amp;`, so use `<%== %>`
+there, together with `escape_typst` for untrusted values.
+
+In a job:
+
+```ruby
+class MonthlyReportJob < ApplicationJob
+  def perform(account)
+    pdf = TypstRails.render("reports/monthly", assigns: { account: account })
+    File.binwrite(Rails.root.join("tmp", "report-#{account.id}.pdf"), pdf)
+  end
+end
+```
+
+Pass the PDF to `deliver_now` rather than `deliver_later` if you hand it to
+a mailer: job arguments are serialized, and binary strings do not survive
+that. Better still, render inside the mailer, as below.
+
+In a mailer, assign the PDF to `attachments`:
+
+```ruby
+class InvoiceMailer < ApplicationMailer
+  def receipt(invoice)
+    attachments["invoice-#{invoice.number}.pdf"] =
+      TypstRails.render("invoices/show", locals: { invoice: invoice })
+    mail(to: invoice.customer.email, subject: "Your invoice")
+  end
+end
+```
+
+To store the PDF with ActiveStorage, `TypstRails.render_and_attach` renders
+the template and calls `attach` on what you pass it:
+
+```ruby
+class Report < ApplicationRecord
+  has_one_attached :pdf
+end
+
+TypstRails.render_and_attach(report.pdf, "reports/monthly",
+                             filename: "monthly.pdf",
+                             locals: { report: report })
+```
+
+It accepts any object with an `attach(io:, filename:, content_type:)`
+method; ActiveStorage itself is not required. `content_type:` defaults to
+`"application/pdf"`, and `assigns:` and `root:` work as in
+`TypstRails.render`. Pass `via: :rails` to render with
+`TypstRails.render_with_rails` instead; `controller:` then works as it does
+there.
+
 ### Configuration
 
 ```ruby

@@ -4,6 +4,7 @@ require "typst_rails/version"
 require "typst_rails/backends"
 require "typst_rails/renderer"
 require "typst_rails/framework_detection"
+require "typst_rails/template_rendering"
 
 # Conditionally load framework integrations
 require "typst_rails/railtie" if TypstRails::FrameworkDetection.rails?

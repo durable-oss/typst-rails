@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
-require "typst_rails/renderer"
-require "typst_rails/erb_source"
+require "typst_rails/template_rendering"
 
 module TypstRails
   # Integration for the Rage framework.
@@ -10,8 +9,9 @@ module TypstRails
   # so the integration adds a controller helper rather than a `.typ` handler.
   module RageIntegration
     # Mirrors the `assigns` reader Renderer expects from a view context, so
-    # locals get the same JSON conversion (models, dates) as in Rails.
-    ViewContext = Struct.new(:assigns)
+    # locals get the same JSON conversion (models, dates) as in Rails. Kept
+    # for compatibility; the helper now goes through {TemplateRendering}.
+    ViewContext = ::TypstRails::TemplateRendering::ViewContext
 
     # Mixed into RageController::API by {RageIntegration.setup}. Include it
     # yourself if typst-rails loads before Rage's controllers are defined.
@@ -42,9 +42,7 @@ module TypstRails
         # Ruby 2.7 binds a trailing symbol-keyed locals hash as keywords;
         # fold those back into locals.
         locals = locals.merge(extra) unless extra.empty?
-        source = ::TypstRails::ErbSource.render(File.read(template), self, locals)
-        renderer = ::TypstRails::Renderer.new(source, template: template)
-        pdf_data = renderer.render(ViewContext.new(locals), locals)
+        pdf_data = ::TypstRails::TemplateRendering.render_file(template, self, locals, locals)
 
         # Rage's render(plain:) sets text/plain, so override it afterwards.
         render plain: pdf_data, status: status
