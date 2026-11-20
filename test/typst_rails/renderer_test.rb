@@ -198,8 +198,8 @@ module TypstRails
       hash = { name: "Test", date: Date.new(2025, 1, 15) }
       result = renderer.send(:transform_value_for_json_serialization, hash)
 
-      assert_equal "Test", result[:name]
-      assert_equal "2025-01-15", result[:date]
+      assert_equal "Test", result["name"]
+      assert_equal "2025-01-15", result["date"]
     end
 
     def test_transform_value_for_json_serialization_with_nested_structures
@@ -212,8 +212,8 @@ module TypstRails
       }
       result = renderer.send(:transform_value_for_json_serialization, data)
 
-      assert_equal "2025-01-15", result[:items][0][:created_at]
-      assert_equal "2025-01-16", result[:items][1][:created_at]
+      assert_equal "2025-01-15", result["items"][0]["created_at"]
+      assert_equal "2025-01-16", result["items"][1]["created_at"]
     end
 
     def test_transform_value_for_json_serialization_with_active_record_object
@@ -451,10 +451,23 @@ module TypstRails
     def test_transform_leaves_primitives_untouched
       renderer = Renderer.new("= Test")
 
-      [nil, true, false, 42, 3.5, "text", :sym].each do |value|
+      [nil, true, false, 42, 3.5, "text"].each do |value|
         result = renderer.send(:transform_value_for_json_serialization, value)
         value.nil? ? assert_nil(result) : assert_equal(value, result)
       end
+    end
+
+    def test_transform_turns_symbols_into_strings
+      assert_equal "sym", Renderer.new("= Test").send(:transform_value_for_json_serialization, :sym)
+    end
+
+    # The old transform passed unknown objects through for to_json to mangle.
+    def test_transform_raises_for_values_with_no_json_form
+      error = assert_raises(SerializationError) do
+        Renderer.new("= Test").send(:transform_value_for_json_serialization, [Object.new])
+      end
+
+      assert_equal "value[0]", error.path
     end
 
     def test_transform_handles_an_empty_array_and_hash
@@ -470,15 +483,15 @@ module TypstRails
 
       result = renderer.send(:transform_value_for_json_serialization, [{ due: date }])
 
-      assert_equal [{ due: "2024-03-01" }], result
+      assert_equal [{ "due" => "2024-03-01" }], result
     end
 
-    def test_transform_preserves_hash_keys_while_converting_values
+    def test_transform_stringifies_hash_keys_while_converting_values
       renderer = Renderer.new("= Test")
 
       result = renderer.send(:transform_value_for_json_serialization, { "a" => Date.new(2024, 1, 2), b: 1 })
 
-      assert_equal({ "a" => "2024-01-02", b: 1 }, result)
+      assert_equal({ "a" => "2024-01-02", "b" => 1 }, result)
     end
 
     # MARK: - respond_to_missing? / method_missing without a view context
@@ -504,60 +517,23 @@ module TypstRails
       assert_equal "\\$100", renderer.escape_typst("$100")
     end
 
-    # MARK: - ActiveRecord detection
+    # MARK: - ActiveRecord-shaped values
     #
-    # active_record_value? checks Base and Relation separately, guarding each
-    # with defined? so the gem works with no ActiveRecord loaded at all.
+    # Models and relations define as_json themselves (ActiveModel and
+    # ActiveRecord::Delegation), so they are converted through it without any
+    # ActiveRecord-specific check.
 
     def test_active_record_relations_are_serialized_via_as_json
       renderer = Renderer.new("= Test")
-      active_record_module = Module.new
-      active_record_module.const_set(:Base, Class.new)
       relation_class = Class.new do
         def as_json
           [{ "id" => 1 }, { "id" => 2 }]
         end
       end
-      active_record_module.const_set(:Relation, relation_class)
 
-      with_defined_constant(:ActiveRecord, active_record_module) do
-        result = renderer.send(:transform_value_for_json_serialization, relation_class.new)
+      result = renderer.send(:transform_value_for_json_serialization, relation_class.new)
 
-        assert_equal([{ "id" => 1 }, { "id" => 2 }], result)
-      end
-    end
-
-    # With ActiveRecord::Base defined but no Relation constant, the check must
-    # short-circuit rather than raise NameError.
-    def test_missing_relation_constant_does_not_raise
-      renderer = Renderer.new("= Test")
-      active_record_module = Module.new
-      active_record_module.const_set(:Base, Class.new)
-
-      with_defined_constant(:ActiveRecord, active_record_module) do
-        refute renderer.send(:active_record_value?, "plain string")
-      end
-    end
-
-    def test_non_active_record_values_are_not_treated_as_records
-      renderer = Renderer.new("= Test")
-      active_record_module = Module.new
-      active_record_module.const_set(:Base, Class.new)
-      active_record_module.const_set(:Relation, Class.new)
-
-      with_defined_constant(:ActiveRecord, active_record_module) do
-        refute renderer.send(:active_record_value?, { plain: "hash" })
-        refute renderer.send(:active_record_value?, [1, 2, 3])
-      end
-    end
-
-    # The common case for this gem: no ActiveRecord in the process at all.
-    def test_active_record_check_is_false_when_active_record_is_absent
-      renderer = Renderer.new("= Test")
-
-      with_undefined_constant(:ActiveRecord) do
-        refute renderer.send(:active_record_value?, Object.new)
-      end
+      assert_equal([{ "id" => 1 }, { "id" => 2 }], result)
     end
 
     # MARK: - compile_typst_source guards
@@ -685,18 +661,18 @@ module TypstRails
     end
 
     def test_collect_data_converts_dates_held_in_assigns
-      renderer = Renderer.new("= Test")
+      renderer = Renderer.new(DATA_SOURCE)
       view = Struct.new(:assigns).new({ "due" => Date.new(2024, 3, 9), "items" => [{ at: Date.new(2024, 3, 10) }] })
 
       data = renderer.send(:collect_data_for_typst, view, {})
 
       assert_equal "2024-03-09", data[:due]
-      assert_equal [{ at: "2024-03-10" }], data[:items]
+      assert_equal [{ "at" => "2024-03-10" }], data[:items]
     end
 
-    # Values from locals are transformed only when a view context is present;
-    # without one they go straight to to_json, which ActiveSupport also
-    # renders as ISO8601. Either way the template sees the same string.
+    # Locals go through DataSerializer with or without a view context, so the
+    # template sees the same string either way. Before, a render without a
+    # view context left Times to to_json, which wrote Time#to_s.
     def test_dates_serialize_identically_with_and_without_a_view_context
       force_cli_backend!
       captured = []
@@ -707,12 +683,13 @@ module TypstRails
         true
       end.returns(["", "", mock_status(true)])
 
-      locals = { due: Date.new(2024, 3, 9) }
+      locals = { due: Date.new(2024, 3, 9), at: Time.utc(2024, 3, 9, 8, 30) }
       Renderer.new(DATA_SOURCE).render(nil, locals)
       Renderer.new(DATA_SOURCE).render(Struct.new(:assigns).new({}), locals)
 
       assert_equal captured[0], captured[1]
       assert_equal "2024-03-09", captured[0]["due"]
+      assert_equal "2024-03-09T08:30:00Z", captured[0]["at"]
     end
 
     # MARK: - Repeated renders

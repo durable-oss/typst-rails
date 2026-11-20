@@ -6,6 +6,7 @@ require "json"
 require "typst_rails/errors"
 require "typst_rails/helpers"
 require "typst_rails/backends"
+require "typst_rails/data_serializer"
 
 # Only require ActiveSupport extensions if available
 begin
@@ -59,6 +60,10 @@ module TypstRails
     # `json("typst_data.json")`. It is written only when the template
     # source mentions it.
     DATA_FILE_NAME = "typst_data.json"
+
+    # Root of the key paths that serialization errors give for locals, as in
+    # "locals.items[0].amount". Instance variables are named "@name" instead.
+    LOCALS_PATH = "locals"
 
     # Holds the filesystem paths used during a single compilation run. Each
     # run gets its own directory so concurrent renders never share a
@@ -217,15 +222,26 @@ module TypstRails
       typst_source.include?(DATA_FILE_NAME)
     end
 
+    # Writes +data+ to typst_data.json next to the Typst source, where the
+    # template loads it with `json("typst_data.json")`.
+    #
+    # The data is converted with {DataSerializer} first, and every value is
+    # treated as a local: anything without a faithful JSON form raises. Data
+    # from {#collect_data_for_typst} is already plain, so this pass is cheap
+    # there; it does the real work for renders without a view context.
+    #
+    # @raise [SerializationError] if a value has no faithful JSON form
+    # @raise [TypstRails::Error] if the file cannot be written
     def write_typst_data_file(paths, data)
       return if data.nil? || data.empty?
 
-      # Write the JSON data file next to the Typst source.
-      # The Typst template would then use `json("typst_data.json")` to load this data.
+      json = JSON.generate(DataSerializer.normalize(data, path: LOCALS_PATH))
       paths.data_file_path = File.join(paths.dir, DATA_FILE_NAME)
-      File.write(paths.data_file_path, data.to_json)
+      File.write(paths.data_file_path, json)
     rescue JSON::GeneratorError => e
       raise Error, "Failed to serialize data to JSON: #{e.message}"
+    rescue Error
+      raise
     rescue StandardError => e
       raise Error, "Failed to write data file: #{e.message}"
     end
@@ -309,90 +325,114 @@ module TypstRails
       warn "Failed to clean up #{description}: #{e.message}"
     end
 
-    # Collects data from view_context (instance variables) and local_assigns.
+    # Collects the data for typst_data.json from the view context's instance
+    # variables (its `assigns`) and +local_assigns+, which win on a name clash.
     #
-    # This method extracts instance variables from the view context (if available via
-    # `assigns`) and merges them with local variables. The result is a hash suitable
-    # for JSON serialization and injection into Typst templates.
+    # Values are converted with {DataSerializer}, under two policies:
+    #
+    # - A local was passed on purpose, so one without a faithful JSON form
+    #   raises {SerializationError}, naming its key path.
+    # - Instance variables include incidental ones (a form object, a service,
+    #   a Proc), so one without a faithful JSON form is left out, and a single
+    #   warning per render lists what was left out and why.
+    #
+    # Assigns whose names begin with an underscore are skipped silently. Rails
+    # keeps its own controller state in such variables and filters them from
+    # `assigns` itself; gems that add their own (such as `@_current_ability`)
+    # are skipped the same way.
+    #
+    # Conversion happens only when the template reads typst_data.json. For
+    # other templates the merged values are returned as they are, since they
+    # are never written.
     #
     # @param view_context [Object] The view context (typically from Rails/Sinatra)
     # @param local_assigns [Hash] Local variables passed to the template
-    # @return [Hash] A hash of data suitable for JSON serialization, with symbolized keys
+    # @return [Hash{Symbol => Object}] The data, keyed by symbolized name
     # @raise [ArgumentError] if local_assigns is not a Hash
+    # @raise [SerializationError] if a local has no faithful JSON form
     # @raise [TypstRails::Error] if data collection fails
-    #
-    # @note Instance variables from view_context take precedence over local_assigns
-    # @note All values are transformed for JSON serialization (dates to ISO8601, etc.)
     def collect_data_for_typst(view_context, local_assigns)
       raise ArgumentError, "local_assigns must be a Hash" unless local_assigns.is_a?(Hash)
 
-      data = {}
+      locals = local_assigns.symbolize_keys
+      assigns = data_assigns(view_context).reject { |name, _| locals.key?(name) }
+      return assigns.merge(locals) unless reads_data_file?(@source)
 
-      # Instance variables from the controller are available in view_context.assigns.
-      if view_context.respond_to?(:assigns)
-        assigns = view_context.assigns
-        if assigns.is_a?(Hash)
-          assigns.each do |key, value|
-            data[key.to_sym] = value # Convert keys to symbols for consistency.
-          end
-        end
+      data = normalize_assigns(assigns)
+      locals.each do |name, value|
+        data[name] = DataSerializer.normalize(value, path: DataSerializer.child_path(LOCALS_PATH, name))
       end
-
-      # Local assigns (e.g., from `render locals: {...}`) merge in, taking precedence.
-      data.merge!(local_assigns.symbolize_keys)
-
-      # Transform values to ensure they are JSON-serializable.
-      data.transform_values do |value|
-        transform_value_for_json_serialization(value)
-      end
-    rescue ArgumentError
+      data
+    rescue ArgumentError, Error
       raise
     rescue StandardError => e
       raise Error, "Failed to collect data for Typst template: #{e.message}"
     end
 
-    # Transforms various Ruby objects into JSON-friendly representations.
-    #
-    # This method recursively transforms Ruby objects to ensure they can be
-    # serialized to JSON for Typst template consumption. It handles:
-    # - ActiveRecord objects (via as_json)
-    # - Date/Time objects (to ISO8601 strings)
-    # - Arrays (recursively transform elements)
-    # - Hashes (recursively transform values)
-    #
-    # @param value [Object] The value to transform
-    # @return [Object] A JSON-friendly representation of the value
-    #
-    # @example Transforming a date
-    #   transform_value_for_json_serialization(Date.today)
-    #   # => "2024-01-15"
-    #
-    # @example Transforming an array
-    #   transform_value_for_json_serialization([Date.today, "text"])
-    #   # => ["2024-01-15", "text"]
-    def transform_value_for_json_serialization(value)
-      if active_record_value?(value)
-        value.as_json # Use Rails' built-in JSON serialization for ActiveRecord objects.
-      elsif value.is_a?(Date) || value.is_a?(Time) || value.is_a?(DateTime)
-        value.iso8601 # Convert date/time objects to ISO8601 strings.
-      elsif value.is_a?(Array)
-        value.map { |v| transform_value_for_json_serialization(v) } # Recursively transform array elements.
-      elsif value.is_a?(Hash)
-        # Recursively transform hash values.
-        value.transform_values do |v_hash|
-          transform_value_for_json_serialization(v_hash)
-        end
-      else
-        value # Return other types as-is, assuming they are JSON-serializable.
+    # @return [Hash{Symbol => Object}] the view context's assigns, minus
+    #   underscore-prefixed internals
+    def data_assigns(view_context)
+      return {} unless view_context.respond_to?(:assigns)
+
+      assigns = view_context.assigns
+      return {} unless assigns.is_a?(Hash)
+
+      assigns.each_with_object({}) do |(key, value), result|
+        result[key.to_sym] = value unless key.to_s.start_with?("_")
       end
     end
 
-    # @return [Boolean] whether +value+ is an ActiveRecord model or relation
-    def active_record_value?(value)
-      return false unless defined?(::ActiveRecord::Base)
+    # Converts each assign, leaving out and warning about those that have no
+    # faithful JSON form.
+    #
+    # @return [Hash{Symbol => Object}]
+    def normalize_assigns(assigns)
+      omitted = []
+      data = assigns.each_with_object({}) do |(name, value), result|
+        result[name] = DataSerializer.normalize(value, path: "@#{name}")
+      rescue SerializationError => e
+        omitted << "@#{name} (#{e.path} #{e.reason})"
+      end
+      warn_about_omitted_assigns(omitted) unless omitted.empty?
+      data
+    end
 
-      value.is_a?(::ActiveRecord::Base) ||
-        (defined?(::ActiveRecord::Relation) && value.is_a?(::ActiveRecord::Relation))
+    def warn_about_omitted_assigns(omitted)
+      log_warning("Left #{omitted.size} instance variable(s) out of #{DATA_FILE_NAME} because they are not " \
+                  "JSON-serializable: #{omitted.join("; ")}. If the template needs one, pass it as a local " \
+                  "in a serializable form.")
+    end
+
+    # Transforms a value into plain JSON data.
+    #
+    # Kept for compatibility; it delegates to {DataSerializer.normalize}. Hash
+    # keys and Symbols come back as Strings, and values with no faithful JSON
+    # form raise {SerializationError} rather than passing through unchanged.
+    #
+    # @param value [Object] The value to transform
+    # @return [Object] Plain JSON data
+    # @raise [SerializationError] if the value has no faithful JSON form
+    #
+    # @example
+    #   transform_value_for_json_serialization([Date.new(2024, 1, 15), :draft])
+    #   # => ["2024-01-15", "draft"]
+    def transform_value_for_json_serialization(value)
+      DataSerializer.normalize(value, path: "value")
+    end
+
+    # Logs a warning to Rails.logger when available, otherwise with warn.
+    #
+    # @param message [String] The warning, without the "TypstRails:" prefix
+    # @return [void]
+    def log_warning(message)
+      formatted_message = "TypstRails: #{message}"
+      if defined?(::Rails) && ::Rails.respond_to?(:logger) && ::Rails.logger
+        ::Rails.logger.warn formatted_message
+      else
+        warn formatted_message
+      end
+    rescue StandardError
+      warn formatted_message
     end
 
     # Logs an error message to the appropriate logger.

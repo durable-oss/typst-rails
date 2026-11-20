@@ -118,14 +118,12 @@ module TypstRails
       assert_includes error.message, "produced an empty PDF"
     end
 
-    # The data hash is serialized with #to_json before it is written. Raise from
-    # there rather than stubbing File.write: whether the failure surfaces during
-    # serialization or during the write depends on ActiveSupport being loaded,
-    # and the gem does not depend on ActiveSupport.
+    # DataSerializer hands JSON.generate only plain data, so the generator
+    # failing is a backstop; it must still surface as a TypstRails::Error.
     def test_compile_raises_error_on_json_serialization_failure
       renderer = Renderer.new(DATA_SOURCE)
 
-      Hash.any_instance.stubs(:to_json).raises(JSON::GeneratorError.new("Cannot serialize"))
+      JSON.stubs(:generate).raises(JSON::GeneratorError.new("Cannot serialize"))
 
       error = assert_raises(Error) do
         renderer.render(nil, { data: "anything" })
@@ -389,19 +387,22 @@ module TypstRails
 
     # MARK: - JSON serialization failures
 
-    # An object whose #to_json raises must produce a TypstRails::Error rather
-    # than leaking the underlying serializer exception.
+    # An object with no faithful JSON form must produce a TypstRails::Error
+    # naming where it sits, even if it defines its own #to_json, rather than
+    # writing whatever that #to_json returns.
     def test_unserializable_value_produces_a_typst_rails_error
       force_cli_backend!
+      Open3.expects(:capture3).never
       unserializable = Object.new
       def unserializable.to_json(*)
-        raise JSON::GeneratorError, "cannot serialize"
+        '"looks fine"'
       end
 
       renderer = Renderer.new(DATA_SOURCE)
-      error = assert_raises(Error) { renderer.render(nil, { bad: unserializable }) }
+      error = assert_raises(SerializationError) { renderer.render(nil, { bad: unserializable }) }
 
-      assert_includes error.message, "Failed to serialize data to JSON"
+      assert_kind_of Error, error
+      assert_includes error.message, "locals.bad is an Object, which is not JSON-serializable"
     end
 
     # MARK: - collect_data_for_typst

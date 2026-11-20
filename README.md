@@ -62,6 +62,36 @@ is not escaped. The controller's instance variables and locals are also
 serialized to `typst_data.json`, which Typst reads with `json()`. That file is
 written only when the template source mentions `typst_data.json`.
 
+Only values with a faithful JSON form are written. Strings, numbers, booleans,
+nil, Hashes, Arrays and Sets pass through, converted recursively; Symbols
+become strings; Dates and Times (including `ActiveSupport::TimeWithZone`)
+become ISO 8601 strings without fractional seconds; and BigDecimals become
+decimal strings such as `"19.99"`, so no precision is lost (use
+`decimal(data.total)` in Typst to do arithmetic with them). Hash keys must be
+Strings, Symbols or numbers. Other objects are converted with `as_json` when
+their class defines one, as ActiveRecord models and relations do, or with
+`to_h`, as Structs and `Data` classes do. The generic `as_json` ActiveSupport
+adds to every object does not count, since it writes the object's instance
+variables. NaN, Infinity, and anything else, such as a Proc or a `Money`
+object, are rejected.
+
+A rejected local raises `TypstRails::SerializationError`, a
+`TypstRails::Error`, naming where the value sits:
+
+```text
+locals.line_items[0].amount is a Money, which is not JSON-serializable. Convert it ...
+```
+
+Controllers often hold instance variables the template never uses, so a
+rejected instance variable is left out of `typst_data.json` instead, with one
+warning per render in the Rails log listing each one and why. Instance
+variables whose names begin with an underscore are skipped silently. To give
+the template such a value, convert it and pass it as a local:
+
+```ruby
+render template: "invoices/show", locals: { total: @invoice.total.to_s }
+```
+
 The `TypstRails::Helpers` methods, such as `escape_typst` and
 `markdown_to_typst`, are available in views:
 

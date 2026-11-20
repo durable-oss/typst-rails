@@ -37,6 +37,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   template's name or root-relative paths. The full command line is no longer
   part of the message; it is available as `CompileError#command`.
 - Warnings printed by a successful CLI compile are no longer discarded.
+- **Behavior change:** a local whose value has no faithful JSON form now
+  raises `TypstRails::SerializationError` (a subclass of `TypstRails::Error`)
+  when the template reads `typst_data.json`. The message names the key path,
+  such as `locals.line_items[0].amount is a Money, which is not
+  JSON-serializable`, and says how to fix it. Such values used to reach the
+  template as `{}`, a dump of the object's instance variables, or its `#to_s`,
+  depending on whether ActiveSupport was loaded. Rejected values include plain
+  objects without their own `as_json` or `to_h`, Procs, IO objects,
+  Rationals, NaN and Infinity, strings with no valid UTF-8 form, and Hashes
+  with keys other than Strings, Symbols or numbers.
+- An instance variable with no faithful JSON form is left out of
+  `typst_data.json`, with one warning per render (to `Rails.logger` when
+  present) naming each variable and the path of the offending value. Instance
+  variables whose names begin with an underscore are no longer written at all.
+- Values in `typst_data.json` are converted by the new
+  `TypstRails::DataSerializer`: Symbols and Hash keys become strings, Sets
+  become arrays, BigDecimals become decimal strings, Structs and `Data`
+  objects become objects via `to_h`, and other objects are used only when
+  their class defines `as_json` or `to_h` itself. The private
+  `Renderer#transform_value_for_json_serialization` now delegates to it, and
+  the private `active_record_value?` check is gone: models and relations are
+  handled through their own `as_json`.
+- Data for templates that do not mention `typst_data.json` is no longer
+  converted at all, so it cannot raise.
 
 ### Fixed
 - `gem "typst-rails"` in a Gemfile now loads the library. Bundler.require
@@ -47,6 +71,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `.typ` partials rendered from a `.typ` view no longer compile to a PDF of
   their own. Only the outermost `.typ` template compiles; nested ones return
   their ERB-processed Typst source to be spliced into the parent.
+- Times passed as locals to a render without a view context (as with
+  `Renderer.new(source).render(nil, locals)`) are now ISO 8601 strings, as they
+  already were with a view context. They were written with `Time#to_s` when
+  ActiveSupport was not loaded.
 
 ## [0.2.1] - 2026-11-14
 
