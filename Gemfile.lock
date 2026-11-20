@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    typst-rails (0.2.1)
+    typst-rails (0.2.2)
       nokogiri (~> 1.13)
       reverse_markdown (~> 2.0)
 
