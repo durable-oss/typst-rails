@@ -69,3 +69,8 @@ Gemspec/DevelopmentDependencies:
 Naming/FileName:
   Exclude:
     - lib/typst-rails.rb
+
+# PDF standard keys such as :ua_1 and :a_2b mirror Typst's own identifiers
+# (ua-1, a-2b), which normalcase (:ua1, :a2b) would obscure.
+Naming/VariableNumber:
+  CheckSymbols: false

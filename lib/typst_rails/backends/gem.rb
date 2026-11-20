@@ -34,9 +34,28 @@ module TypstRails
 
       # @see Base#compile
       def compile(typ_path, root_dir)
-        ::Typst::Pdf.new(file: typ_path, root: root_dir).compiled.document
+        ::Typst::Pdf.new(file: typ_path, root: root_dir, **gem_options).compiled.document
       rescue StandardError => e
         raise Error, "Typst compilation failed: #{e.message}"
+      end
+
+      private
+
+      # TypstRails.configuration raises NoMethodError when only
+      # "typst_rails/renderer" has been required, so check for it first.
+      def configured_compile_options
+        return {} unless TypstRails.respond_to?(:configuration)
+
+        TypstRails.configuration&.compile_options || {}
+      end
+
+      # Options for Typst::Pdf.new. Empty values are left out so that a plain
+      # compile passes only file and root, as before.
+      def gem_options
+        options = {}
+        standards = configured_compile_options.fetch(:pdf_standards, [])
+        options[:pdf_standards] = standards unless standards.empty?
+        options
       end
     end
   end

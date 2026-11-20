@@ -139,6 +139,31 @@ creates a short-lived working directory inside the root, so it must be
 writable. Without it, each render compiles in a private temporary directory
 and cannot read your application's files.
 
+#### Accessible and archival PDFs
+
+Set `pdf_standard` to have Typst enforce a PDF standard. Use `:ua_1` for
+PDF/UA-1, the accessibility standard:
+
+```ruby
+TypstRails.configure do |config|
+  config.pdf_standard = :ua_1
+end
+```
+
+PDF/UA-1 requires a document title. Set it in each template, or the render
+raises `TypstRails::Error`:
+
+```typst
+#set document(title: "Quarterly Report")
+```
+
+Pass an array to combine standards, such as `[:a_2b, :ua_1]` for a document
+that is both archival and accessible. The accepted keys are `:pdf_1_4`,
+`:pdf_1_5`, `:pdf_1_6`, `:pdf_1_7`, `:pdf_2_0`, `:a_1a`, `:a_1b`, `:a_2a`,
+`:a_2b`, `:a_2u`, `:a_3a`, `:a_3b`, `:a_3u`, `:a_4`, `:a_4e`, `:a_4f` and
+`:ua_1`, matching the values listed by `typst compile --help`. The default,
+`nil`, produces a plain PDF. Both the CLI and gem backends honor this setting.
+
 ### Compilation Backends
 
 `TypstRails` compiles documents through a pluggable backend. Two backends ship

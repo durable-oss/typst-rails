@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `config.pdf_standard` to have Typst enforce PDF standards such as PDF/UA-1
+  (`:ua_1`) and PDF/A (`:a_2b` and others). Accepts a symbol or an array of
+  symbols, and works with both the CLI and gem backends. PDF/UA-1 requires the
+  template to set a document title.
+- `TypstRails::Configuration#compile_options`, the compiler options that
+  backends pass through to Typst.
+
 ### Fixed
 - `gem "typst-rails"` in a Gemfile now loads the library. Bundler.require
   requires "typst-rails", but the entry point was only `typst_rails.rb`, so

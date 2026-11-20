@@ -54,6 +54,16 @@ module TypstRails
       assert pdf.start_with?("%PDF-"), "Expected PDF bytes, got #{pdf[0, 20].inspect}"
     end
 
+    # PDF/UA-1 needs a document title; Typst refuses to compile without one.
+    def test_render_with_pdf_ua_1_writes_the_conformance_marker
+      TypstRails.configuration.pdf_standard = :ua_1
+
+      pdf = render_typst(%(#set document(title: "Accessible report")\n= Hello\n\nBody text.))
+
+      assert pdf.start_with?("%PDF-")
+      assert_includes pdf, "pdfuaid"
+    end
+
     def test_local_assigns_reach_the_template_as_json
       render_typst(<<~TYP, { title: "Report", count: 3, ratio: 0.5, draft: false, missing: nil, tags: %w[a b] })
         #let data = json("typst_data.json")

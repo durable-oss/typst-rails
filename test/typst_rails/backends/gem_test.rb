@@ -144,6 +144,88 @@ module TypstRails
         assert_equal "/tmp/doc.typ", captured[:file]
         assert_equal "/tmp", captured[:root]
       end
+
+      # MARK: - PDF standards
+
+      def test_compile_passes_pdf_standards_to_the_gem
+        TypstRails.configure { |c| c.pdf_standard = %i[a_2b ua_1] }
+
+        assert_equal %w[a-2b ua-1], capture_gem_options[:pdf_standards]
+      ensure
+        TypstRails.configuration = nil
+      end
+
+      # With no standard set, only file and root are passed, as before.
+      def test_compile_omits_pdf_standards_by_default
+        TypstRails.configure { |c| c.backend = :gem }
+
+        refute capture_gem_options.key?(:pdf_standards)
+      ensure
+        TypstRails.configuration = nil
+      end
+
+      def test_compile_omits_pdf_standards_without_configuration
+        TypstRails.configuration = nil
+
+        assert_equal %i[file root], capture_gem_options.keys
+      end
+
+      def test_compile_produces_a_pdf_ua_document_with_the_real_gem
+        requires_typst_gem!
+        TypstRails.configure { |c| c.pdf_standard = :ua_1 }
+
+        Dir.mktmpdir do |dir|
+          typ_path = File.join(dir, "doc.typ")
+          File.write(typ_path, "#set document(title: \"Accessible report\")\n= Hello\n\nBody text.\n")
+
+          pdf = Gem.new.compile(typ_path, dir)
+
+          assert pdf.start_with?("%PDF")
+          assert_includes pdf, "pdfuaid"
+        end
+      ensure
+        TypstRails.configuration = nil
+      end
+
+      def test_real_gem_rejects_a_pdf_ua_document_without_a_title
+        requires_typst_gem!
+        TypstRails.configure { |c| c.pdf_standard = :ua_1 }
+
+        Dir.mktmpdir do |dir|
+          typ_path = File.join(dir, "doc.typ")
+          File.write(typ_path, "= Hello\n")
+
+          error = assert_raises(Error) { Gem.new.compile(typ_path, dir) }
+
+          assert_includes error.message, "missing document title"
+        end
+      ensure
+        TypstRails.configuration = nil
+      end
+
+      private
+
+      # Compiles against a stand-in Typst::Pdf and returns the options it got.
+      def capture_gem_options
+        captured = {}
+        pdf_class = Class.new do
+          define_method(:initialize) { |**options| captured.replace(options) }
+
+          def compiled
+            self
+          end
+
+          def document
+            "%PDF-fake"
+          end
+        end
+
+        with_defined_constant(:Typst, Module.new { const_set(:Pdf, pdf_class) }) do
+          Gem.new.compile("/tmp/doc.typ", "/tmp")
+        end
+
+        captured
+      end
     end
   end
 end

@@ -272,6 +272,85 @@ module TypstRails
       assert config.validate!
     end
 
+    # MARK: - pdf_standard
+
+    def test_pdf_standard_defaults_to_nil
+      assert_nil TypstRails::Configuration.new.pdf_standard
+    end
+
+    def test_compile_options_has_no_pdf_standards_by_default
+      assert_equal [], TypstRails::Configuration.new.compile_options[:pdf_standards]
+    end
+
+    def test_compile_options_maps_a_single_symbol
+      config = TypstRails::Configuration.new
+      config.pdf_standard = :ua_1
+
+      assert_equal({ pdf_standards: ["ua-1"] }, config.compile_options)
+    end
+
+    def test_compile_options_maps_an_array_of_symbols_in_order
+      config = TypstRails::Configuration.new
+      config.pdf_standard = %i[a_2b ua_1]
+
+      assert_equal %w[a-2b ua-1], config.compile_options[:pdf_standards]
+    end
+
+    def test_compile_options_drops_duplicate_standards
+      config = TypstRails::Configuration.new
+      config.pdf_standard = %i[ua_1 ua_1]
+
+      assert_equal %w[ua-1], config.compile_options[:pdf_standards]
+    end
+
+    def test_every_pdf_standard_key_is_accepted
+      config = TypstRails::Configuration.new
+      config.pdf_standard = TypstRails::Configuration::PDF_STANDARDS.keys
+
+      assert config.validate!
+      assert_equal TypstRails::Configuration::PDF_STANDARDS.values, config.compile_options[:pdf_standards]
+    end
+
+    def test_pdf_standards_cover_the_documented_identifiers
+      expected = %w[1.7 2.0 a-1b a-2b a-3b a-4 ua-1]
+
+      assert_empty expected - TypstRails::Configuration::PDF_STANDARDS.values
+    end
+
+    def test_validate_rejects_an_unknown_pdf_standard
+      config = TypstRails::Configuration.new
+      config.pdf_standard = :ua_2
+
+      error = assert_raises(ArgumentError) { config.validate! }
+
+      assert_includes error.message, "(got :ua_2)"
+      assert_includes error.message, ":a_2b, "
+    end
+
+    def test_validate_rejects_an_unknown_pdf_standard_inside_an_array
+      config = TypstRails::Configuration.new
+      config.pdf_standard = %i[ua_1 nope]
+
+      error = assert_raises(ArgumentError) { config.validate! }
+
+      assert_includes error.message, ":nope"
+    end
+
+    # Keys are symbols; the Typst identifier itself is not accepted, so there
+    # is one spelling to look up.
+    def test_validate_rejects_a_typst_identifier_string
+      config = TypstRails::Configuration.new
+      config.pdf_standard = "ua-1"
+
+      assert_raises(ArgumentError) { config.validate! }
+    end
+
+    def test_configure_rejects_an_unknown_pdf_standard
+      assert_raises(ArgumentError) do
+        TypstRails.configure { |config| config.pdf_standard = :bogus }
+      end
+    end
+
     # MARK: - VERSION
 
     def test_version_is_a_frozen_string

@@ -84,6 +84,28 @@ module TypstRails
   #   config.typst_executable_path = "/usr/local/bin/typst"
   #   config.validate! # Ensures configuration is valid
   class Configuration
+    # PDF standards accepted by {#pdf_standard}, mapped to the identifiers the
+    # Typst compiler uses for them (as listed by `typst compile --help`).
+    PDF_STANDARDS = {
+      pdf_1_4: "1.4",
+      pdf_1_5: "1.5",
+      pdf_1_6: "1.6",
+      pdf_1_7: "1.7",
+      pdf_2_0: "2.0",
+      a_1a: "a-1a",
+      a_1b: "a-1b",
+      a_2a: "a-2a",
+      a_2b: "a-2b",
+      a_2u: "a-2u",
+      a_3a: "a-3a",
+      a_3b: "a-3b",
+      a_3u: "a-3u",
+      a_4: "a-4",
+      a_4e: "a-4e",
+      a_4f: "a-4f",
+      ua_1: "ua-1"
+    }.freeze
+
     # @return [String] Path to the Typst executable (defaults to "typst" in PATH)
     attr_accessor :typst_executable_path
 
@@ -101,12 +123,21 @@ module TypstRails
     #   via {TypstRails::Backends::Registry.register}.
     attr_accessor :backend
 
+    # @return [Symbol, Array<Symbol>, nil] PDF standard(s) Typst should enforce
+    #   conformance with, such as `:ua_1` for accessible PDF/UA-1 output or
+    #   `[:a_2b, :ua_1]` for several at once. See {PDF_STANDARDS} for the
+    #   accepted keys. When nil (the default), Typst writes a plain PDF.
+    #   PDF/UA-1 requires the document to set a title with
+    #   `#set document(title: ...)`; compilation fails without one.
+    attr_accessor :pdf_standard
+
     # Initializes a new Configuration with default values.
     #
     # Default values:
     # - `typst_executable_path`: "typst" (assumes typst is in PATH)
     # - `default_root_path`: nil (each render gets a private temporary root)
     # - `backend`: `:auto` (prefer the `typst` gem, fall back to the CLI)
+    # - `pdf_standard`: nil (plain PDF, no conformance enforced)
     #
     # @return [Configuration] A new configuration instance
     #
@@ -119,6 +150,22 @@ module TypstRails
       @typst_executable_path = "typst"
       @default_root_path = nil
       @backend = :auto
+      @pdf_standard = nil
+    end
+
+    # Options that backends pass through to the Typst compiler.
+    #
+    # @return [Hash{Symbol => Object}] compiler options:
+    #   - `:pdf_standards` [Array<String>] Typst PDF standard identifiers
+    #     (e.g. `["ua-1"]`), empty when {#pdf_standard} is nil
+    # @raise [ArgumentError] if {#pdf_standard} contains an unknown key
+    #
+    # @example
+    #   config = TypstRails::Configuration.new
+    #   config.pdf_standard = [:a_2b, :ua_1]
+    #   config.compile_options #=> { pdf_standards: ["a-2b", "ua-1"] }
+    def compile_options
+      { pdf_standards: pdf_standards }
     end
 
     # Validates the configuration settings.
@@ -126,10 +173,12 @@ module TypstRails
     # Ensures that:
     # - typst_executable_path is a non-empty string
     # - default_root_path (if set) is a String or Pathname
+    # - pdf_standard (if set) is a key, or Array of keys, of {PDF_STANDARDS}
     #
     # @return [true] if configuration is valid
     # @raise [ArgumentError] if typst_executable_path is invalid
     # @raise [ArgumentError] if default_root_path is invalid
+    # @raise [ArgumentError] if pdf_standard is invalid
     #
     # @example Validate configuration
     #   config = Configuration.new
@@ -144,7 +193,19 @@ module TypstRails
         raise ArgumentError, "default_root_path must be a String, Pathname, or nil"
       end
 
+      pdf_standards
       true
+    end
+
+    private
+
+    def pdf_standards
+      Array(pdf_standard).map do |standard|
+        PDF_STANDARDS.fetch(standard) do
+          raise ArgumentError, "pdf_standard must be nil, or one or more of: " \
+                               "#{PDF_STANDARDS.keys.map(&:inspect).join(", ")} (got #{standard.inspect})"
+        end
+      end.uniq
     end
   end
 end

@@ -38,7 +38,7 @@ module TypstRails
       # @see Base#compile
       def compile(typ_path, root_dir)
         output_pdf_path = File.join(root_dir, "#{File.basename(typ_path, ".typ")}_output.pdf")
-        cmd = [executable_path, "compile", "--root", root_dir, typ_path, output_pdf_path]
+        cmd = [executable_path, "compile", "--root", root_dir, *compile_option_args, typ_path, output_pdf_path]
 
         begin
           _stdout_str, stderr_str, status = Open3.capture3(*cmd)
@@ -67,6 +67,19 @@ module TypstRails
         return nil unless TypstRails.respond_to?(:configuration)
 
         TypstRails.configuration&.typst_executable_path
+      end
+
+      # Same guard as {#configured_executable_path}.
+      def configured_compile_options
+        return {} unless TypstRails.respond_to?(:configuration)
+
+        TypstRails.configuration&.compile_options || {}
+      end
+
+      # Typst takes several standards as one comma-separated value.
+      def compile_option_args
+        standards = configured_compile_options.fetch(:pdf_standards, [])
+        standards.empty? ? [] : ["--pdf-standard", standards.join(",")]
       end
 
       def directory_path?(path)

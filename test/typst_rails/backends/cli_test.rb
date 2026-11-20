@@ -320,6 +320,74 @@ module TypstRails
         assert_equal "report_output.pdf", File.basename(output_path)
       end
 
+      # MARK: - PDF standards
+
+      def test_compile_omits_pdf_standard_flag_by_default
+        TypstRails.configure { |c| c.typst_executable_path = "typst" }
+
+        refute_includes capture_compile_command, "--pdf-standard"
+      ensure
+        reset_configuration!
+      end
+
+      def test_compile_passes_a_single_pdf_standard
+        TypstRails.configure { |c| c.pdf_standard = :ua_1 }
+        cmd = capture_compile_command
+
+        assert_equal "ua-1", cmd[cmd.index("--pdf-standard") + 1]
+      ensure
+        reset_configuration!
+      end
+
+      # Typst accepts several standards as one comma-separated value.
+      def test_compile_passes_several_pdf_standards_as_one_comma_separated_flag
+        TypstRails.configure { |c| c.pdf_standard = %i[a_2b ua_1] }
+        cmd = capture_compile_command
+
+        assert_equal 1, cmd.count("--pdf-standard")
+        assert_equal "a-2b,ua-1", cmd[cmd.index("--pdf-standard") + 1]
+      ensure
+        reset_configuration!
+      end
+
+      # The source and output paths stay last, after every option.
+      def test_pdf_standard_flag_comes_before_the_source_path
+        TypstRails.configure { |c| c.pdf_standard = :ua_1 }
+        cmd = capture_compile_command
+
+        source_index = cmd.index { |arg| arg.end_with?(".typ") }
+
+        assert_operator cmd.index("--pdf-standard"), :<, source_index
+      ensure
+        reset_configuration!
+      end
+
+      def test_compile_without_configuration_omits_pdf_standard_flag
+        reset_configuration!
+
+        refute_includes capture_compile_command, "--pdf-standard"
+      end
+
+      def test_compile_produces_a_pdf_ua_document_with_the_real_cli
+        requires_typst_cli!
+        TypstRails.configure { |c| c.pdf_standard = :ua_1 }
+        source = "#set document(title: \"Accessible report\")\n= Hello\n\nBody text.\n"
+
+        pdf = compile_source_with_real_cli(source)
+
+        assert pdf.start_with?("%PDF")
+        assert_includes pdf, "pdfuaid"
+      end
+
+      def test_real_cli_rejects_a_pdf_ua_document_without_a_title
+        requires_typst_cli!
+        TypstRails.configure { |c| c.pdf_standard = :ua_1 }
+
+        error = assert_raises(Error) { compile_source_with_real_cli("= Hello\n") }
+
+        assert_includes error.message, "missing document title"
+      end
+
       # MARK: - Failure modes
 
       def test_compile_raises_when_pdf_is_empty
@@ -518,6 +586,41 @@ module TypstRails
       end
 
       private
+
+      def requires_typst_cli!
+        skip "the typst CLI is not on PATH" unless Cli.new(executable_path: "typst").available?
+      end
+
+      # Compiles +source+ with the real CLI, then clears the configuration.
+      def compile_source_with_real_cli(source)
+        Dir.mktmpdir do |dir|
+          typ_path = File.join(dir, "doc.typ")
+          File.write(typ_path, source)
+          Cli.new.compile(typ_path, dir)
+        end
+      ensure
+        reset_configuration!
+      end
+
+      # Runs a stubbed compile and returns the command it would have run.
+      def capture_compile_command
+        captured_cmd = nil
+
+        Open3.stubs(:capture3).with do |*args|
+          captured_cmd = args
+          output_path = args.last
+          File.binwrite(output_path, "pdf bytes") if output_path.end_with?(".pdf")
+          true
+        end.returns(["", "", mock_status(true)])
+
+        Dir.mktmpdir do |dir|
+          typ_path = File.join(dir, "doc.typ")
+          File.write(typ_path, "= Test")
+          Cli.new(executable_path: "typst").compile(typ_path, dir)
+        end
+
+        captured_cmd
+      end
 
       def reset_configuration!
         TypstRails.configuration = nil
