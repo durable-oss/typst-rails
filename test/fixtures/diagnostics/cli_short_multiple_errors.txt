@@ -1,0 +1,3 @@
+srv/app/typst/typst_rails_20261120-4242-abc123/template.typ:1:12: error: expected expression
+srv/app/typst/typst_rails_20261120-4242-abc123/template.typ:2:8: error: expected expression
+srv/app/typst/typst_rails_20261120-4242-abc123/template.typ:2:8: error: expected semicolon or line break

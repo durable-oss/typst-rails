@@ -32,14 +32,17 @@ module TypstRails
         end
       end
 
-      # Passes {TypstRails::Configuration#compile_options} to `Typst::Pdf.new`
-      # as its `font_paths:` and `ignore_system_fonts:` options.
+      # Passes {TypstRails::Configuration#compile_options} to `Typst::Pdf.new`.
+      # The `typst` gem raises with Typst's diagnostics as the message, so
+      # failures become a {TypstRails::CompileError} with parsed
+      # diagnostics. On success it returns only the PDF, so warnings are not
+      # available and nothing is yielded.
       #
       # @see Base#compile
       def compile(typ_path, root_dir)
         ::Typst::Pdf.new(file: typ_path, root: root_dir, **gem_options).compiled.document
       rescue StandardError => e
-        raise Error, "Typst compilation failed: #{e.message}"
+        raise CompileError, e.message
       end
 
       private

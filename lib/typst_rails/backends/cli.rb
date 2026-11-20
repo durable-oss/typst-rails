@@ -36,8 +36,9 @@ module TypstRails
       end
 
       # Passes {TypstRails::Configuration#compile_options} to Typst as
-      # command-line flags: one `--font-path` per font directory, and
-      # `--ignore-system-fonts` when that option is set.
+      # command-line flags. Typst's stderr is parsed into the raised
+      # {TypstRails::CompileError} on failure, and yielded to the block, if
+      # given, on success, since a successful compile can still print warnings.
       #
       # @see Base#compile
       def compile(typ_path, root_dir)
@@ -52,8 +53,11 @@ module TypstRails
           raise Error, "Failed to execute Typst compiler: #{e.message}"
         end
 
-        raise_compilation_failure(cmd, stderr_str) unless status.success?
-        read_compiled_pdf(output_pdf_path)
+        raise CompileError.new(stderr_str, command: cmd) unless status.success?
+
+        pdf_data = read_compiled_pdf(output_pdf_path)
+        yield stderr_str if block_given? && !stderr_str.strip.empty?
+        pdf_data
       ensure
         safe_unlink(output_pdf_path)
       end
@@ -109,13 +113,6 @@ module TypstRails
         raise Error, "Typst compilation produced an empty PDF" if pdf_data.empty?
 
         pdf_data
-      end
-
-      def raise_compilation_failure(cmd, stderr_str)
-        error_message = "Typst compilation failed.\n"
-        error_message += "Command: #{cmd.join(" ")}\n"
-        error_message += "Stderr: #{stderr_str}" unless stderr_str.empty?
-        raise Error, error_message
       end
 
       def safe_unlink(path)

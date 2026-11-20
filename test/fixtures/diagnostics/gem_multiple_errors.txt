@@ -1,0 +1,18 @@
+error: expected expression
+  ┌─ srv/app/typst/typst_rails_20261120-4242-abc123/template.typ:1:12
+  │
+1 │ #let a = 1 +
+  │             ^
+
+error: expected expression
+  ┌─ srv/app/typst/typst_rails_20261120-4242-abc123/template.typ:2:8
+  │
+2 │ #let b = )
+  │         ^
+
+error: expected semicolon or line break
+  ┌─ srv/app/typst/typst_rails_20261120-4242-abc123/template.typ:2:8
+  │
+2 │ #let b = )
+  │         ^
+

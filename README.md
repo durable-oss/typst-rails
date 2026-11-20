@@ -248,13 +248,99 @@ class MyRemoteBackend < TypstRails::Backends::Base
   end
 
   def compile(typ_path, root_dir)
-    # ... return PDF bytes, or raise TypstRails::Error on failure
+    # ... return PDF bytes. If Typst rejects the source, raise
+    # TypstRails::CompileError with Typst's diagnostic output as the message;
+    # raise TypstRails::Error for other failures. To report warnings from a
+    # successful compile, yield Typst's diagnostic output to the block.
   end
 end
 
 TypstRails::Backends::Registry.register(:my_remote, MyRemoteBackend.new)
 TypstRails.configure { |config| config.backend = :my_remote }
 ```
+
+### Errors
+
+When Typst rejects a template, rendering raises `TypstRails::CompileError`, a
+subclass of `TypstRails::Error`, so existing `rescue TypstRails::Error` code
+keeps working. The message names the template and the location of the first
+error, followed by Typst's own report:
+
+```
+Typst compilation failed in app/views/reports/show.pdf.typ:4:9: unknown variable: foo
+(Line numbers count lines of the compiled Typst source, after any ERB evaluation.)
+
+error: unknown variable: foo
+  ┌─ app/views/reports/show.pdf.typ:4:9
+  │
+4 │ #let x = foo(1)
+  │          ^^^
+```
+
+Each render compiles a copy of the template in a temporary directory. Paths
+into that directory are replaced in the message: the template becomes its
+name (the view path in Rails, the path you passed to the Sinatra and Rage
+helpers, or `(inline source)` for a `Renderer` built from a string), other
+files under the Typst root become root-relative paths such as `/lib.typ`, and
+files next to the template, such as `typst_data.json`, are shown by name.
+To name a template yourself, pass `template:` to `TypstRails::Renderer.new`:
+
+```ruby
+TypstRails::Renderer.new(File.read(path), template: path).render(nil, data)
+```
+
+The error also carries the details as attributes:
+
+```ruby
+rescue TypstRails::CompileError => e
+  e.template      # => "app/views/reports/show.pdf.typ", or nil
+  e.line          # => 4, line of the first error
+  e.column        # => 9, column of the first error
+  e.source_line   # => "#let x = foo(1)", when the error is in the template
+  e.diagnostics   # => every error and warning, with severity, message,
+                  #    path, line, column and hints
+  e.errors        # => just the errors
+  e.warnings      # => just the warnings
+  e.typst_message # => Typst's output, with paths rewritten
+  e.command       # => the command line the CLI backend ran, for debugging
+end
+```
+
+Line numbers refer to the source Typst compiled. For `.typ` views and the
+Sinatra and Rage helpers, that is the template after ERB evaluation, so an
+ERB tag that expands to several lines, or a `<% %>` line that is trimmed
+away, shifts them relative to the file on disk; `source_line` shows the line
+Typst actually saw. Columns are counted from 0, as Typst prints them.
+
+Parsing is best-effort. If Typst's output is not in a format TypstRails
+recognizes, you still get a `CompileError` with the raw output in the message
+and in `typst_message`, and `diagnostics` is empty.
+
+### Warnings
+
+Typst can report warnings, such as an unknown font family, on a compile that
+succeeds. With the CLI backend, TypstRails passes them to `config.on_warning`,
+which is called with an array of diagnostics and the template's name (or
+nil). By default the warnings are logged with `Rails.logger.warn`, or with
+`Kernel#warn` outside Rails:
+
+```ruby
+TypstRails.configure do |config|
+  # Fail tests on any Typst warning:
+  config.on_warning = ->(warnings, template) do
+    raise "Typst warnings in #{template}: #{warnings.map(&:to_s).join(", ")}"
+  end
+
+  # Or ignore them:
+  # config.on_warning = nil
+end
+```
+
+An error raised by the handler propagates from the render.
+
+The `typst` gem returns only the PDF on a successful compile, so with the
+`:gem` backend `on_warning` is never called. Warnings that accompany a failed
+compile are included in `CompileError#warnings` with either backend.
 
 ## Testing
 

@@ -18,6 +18,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `typst` gem as its `font_paths:` and `ignore_system_fonts:` options.
 - `TypstRails::Configuration#compile_options`, the compiler options that
   backends pass through to Typst.
+- `TypstRails::CompileError`, a subclass of `TypstRails::Error`, raised when
+  Typst rejects a template. It carries the parsed diagnostics (severity,
+  message, path, line, column, hints), the line and column of the first
+  error, the template's name, the offending source line, Typst's output, and,
+  for the CLI backend, the command that was run.
+- `TypstRails::Renderer.new` accepts an optional `template:` name. The Rails
+  handler passes the view's path, and the Sinatra and Rage helpers pass the
+  template path, so errors name the template instead of a temporary file.
+- `config.on_warning`, called with the warnings from a successful CLI
+  compile and the template's name. By default it logs them. The `typst` gem
+  does not expose warnings on success, so it is not called for the `:gem`
+  backend.
+
+### Changed
+- Compile error messages name the template and the location of the first
+  error, and replace paths into the render's temporary directory with the
+  template's name or root-relative paths. The full command line is no longer
+  part of the message; it is available as `CompileError#command`.
+- Warnings printed by a successful CLI compile are no longer discarded.
 
 ### Fixed
 - `gem "typst-rails"` in a Gemfile now loads the library. Bundler.require

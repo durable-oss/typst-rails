@@ -82,6 +82,17 @@ module TypstRails
       template_file&.unlink
     end
 
+    def test_render_typst_names_the_template_in_compile_errors
+      template_file = create_temp_typst_file("= Report")
+      Renderer.expects(:new).with(anything, template: template_file.path).returns(
+        stub("renderer", render: "pdf")
+      )
+
+      build_controller.render_typst(template_file.path)
+    ensure
+      template_file&.unlink
+    end
+
     def test_render_typst_writes_locals_to_the_data_file
       template_file = create_temp_typst_file('#let data = json("typst_data.json")')
       data = nil

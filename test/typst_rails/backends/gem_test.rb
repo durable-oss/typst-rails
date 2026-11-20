@@ -56,6 +56,22 @@ module TypstRails
           assert_includes error.message, "Typst compilation failed"
         end
       end
+
+      def test_compile_errors_carry_parsed_diagnostics
+        requires_typst_gem!
+        backend = Gem.new
+
+        Dir.mktmpdir do |dir|
+          typ_path = File.join(dir, "doc.typ")
+          File.write(typ_path, "= Title\n#undefined_thing\n")
+
+          error = assert_raises(CompileError) { backend.compile(typ_path, dir) }
+
+          # Typst counts columns from 0.
+          assert_equal [2, 1, nil], [error.line, error.column, error.command]
+          assert_equal "unknown variable: undefined_thing", error.errors.first.message
+        end
+      end
       # MARK: - Availability detection (runs with or without the gem present)
 
       # The happy path short-circuits on the already-loaded constant rather

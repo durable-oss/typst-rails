@@ -1,0 +1,12 @@
+error: unknown variable: undefined_thing
+  ┌─ srv/app/typst/typst_rails_20261120-4242-abc123/template.typ:2:7
+  │
+2 │ Hello #undefined_thing
+  │        ^^^^^^^^^^^^^^^
+
+warning: unknown font family: nosuchfontxyz
+  ┌─ srv/app/typst/typst_rails_20261120-4242-abc123/template.typ:1:16
+  │
+1 │ #set text(font: "NoSuchFontXyz")
+  │                 ^^^^^^^^^^^^^^^
+

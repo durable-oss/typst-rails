@@ -1,0 +1,1 @@
+srv/app/typst/typst_rails_20261120-4242-abc123/template.typ:1:6: error: unknown variable: ab

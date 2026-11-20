@@ -36,13 +36,15 @@ module TypstRails
       # @param locals [Hash] data for the template
       # @param status [Integer, Symbol, nil] response status
       # @return [void]
-      # @raise [TypstRails::Error] if compilation fails
+      # @raise [TypstRails::CompileError] if Typst rejects the template
+      # @raise [TypstRails::Error] if compilation fails for another reason
       def render_typst(template, locals = {}, status: nil, **extra)
         # Ruby 2.7 binds a trailing symbol-keyed locals hash as keywords;
         # fold those back into locals.
         locals = locals.merge(extra) unless extra.empty?
         source = ::TypstRails::ErbSource.render(File.read(template), self, locals)
-        pdf_data = ::TypstRails::Renderer.new(source).render(ViewContext.new(locals), locals)
+        renderer = ::TypstRails::Renderer.new(source, template: template)
+        pdf_data = renderer.render(ViewContext.new(locals), locals)
 
         # Rage's render(plain:) sets text/plain, so override it afterwards.
         render plain: pdf_data, status: status

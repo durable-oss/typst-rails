@@ -289,5 +289,45 @@ module TypstRails
 
       view.instance_eval(Handler.call(template, template.source))
     end
+
+    # MARK: - Template names
+
+    NamedTemplate = Struct.new(:source, :short_identifier, :identifier, :virtual_path)
+
+    def test_call_passes_the_template_name_to_the_renderer
+      template = NamedTemplate.new("= Hi", "app/views/reports/show.pdf.typ", "/srv/app/views/reports/show.pdf.typ")
+      view = FakeView.new
+
+      Renderer.expects(:new).with("= Hi", template: "app/views/reports/show.pdf.typ").returns(
+        mock("renderer").tap { |r| r.expects(:render).returns("pdf") }
+      )
+
+      view.instance_eval(Handler.call(template, template.source))
+    end
+
+    def test_template_display_name_prefers_the_short_identifier
+      template = NamedTemplate.new("", "app/views/a.typ", "/srv/app/views/a.typ", "a")
+
+      assert_equal "app/views/a.typ", Handler.template_display_name(template)
+    end
+
+    def test_template_display_name_falls_back_to_identifier_then_virtual_path
+      assert_equal "/srv/a.typ", Handler.template_display_name(NamedTemplate.new("", nil, "/srv/a.typ", "a"))
+      assert_equal "reports/a", Handler.template_display_name(NamedTemplate.new("", "", nil, "reports/a"))
+      assert_nil Handler.template_display_name(FakeTemplate.new(""))
+    end
+
+    # The name is embedded in generated Ruby, so it must stay a literal.
+    def test_template_names_are_embedded_safely
+      name = 'app/views/#{raise "injected"}/a".typ'
+      template = NamedTemplate.new("= Hi", name)
+      view = FakeView.new
+
+      Renderer.expects(:new).with("= Hi", template: name).returns(
+        mock("renderer").tap { |r| r.expects(:render).returns("pdf") }
+      )
+
+      view.instance_eval(Handler.call(template, template.source))
+    end
   end
 end

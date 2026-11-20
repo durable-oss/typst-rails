@@ -3,6 +3,7 @@
 require "tmpdir"
 require "fileutils"
 require "json"
+require "typst_rails/errors"
 require "typst_rails/helpers"
 require "typst_rails/backends"
 
@@ -72,21 +73,33 @@ module TypstRails
     # @return [Object, nil] The view context providing access to helpers and instance variables
     attr_reader :view_context
 
+    # @return [String, nil] Display name of the template, used in error
+    #   messages and passed to {TypstRails::Configuration#on_warning}
+    attr_reader :template
+
     # MARK: - Initialization
 
     # Initializes the renderer with the Typst template source.
     #
     # @param source [String] The Typst template source code
+    # @param template [String, Pathname, nil] A name for the template, such as
+    #   "app/views/reports/show.pdf.typ". Error messages and warnings use it
+    #   in place of the temporary file Typst actually compiles. The Rails
+    #   handler and the Sinatra and Rage helpers pass it for you.
     # @return [Renderer] A new renderer instance
     # @raise [ArgumentError] if source is nil
     # @raise [ArgumentError] if source is too large (exceeds MAX_SOURCE_SIZE)
     #
     # @example
     #   renderer = Renderer.new("= Hello, Typst!")
-    def initialize(source)
+    #
+    # @example Naming the template for error messages
+    #   renderer = Renderer.new(File.read(path), template: path)
+    def initialize(source, template: nil)
       raise ArgumentError, "Source cannot be nil" if source.nil?
 
       @source = source.to_s
+      @template = template&.to_s
 
       return unless @source.bytesize > MAX_SOURCE_SIZE
 
@@ -106,7 +119,8 @@ module TypstRails
     # @return [String] Binary string containing the PDF data
     # @raise [ArgumentError] if local_assigns is not a Hash
     # @raise [ArgumentError] if source is empty
-    # @raise [TypstRails::Error] if Typst compilation fails
+    # @raise [TypstRails::CompileError] if Typst rejects the template
+    # @raise [TypstRails::Error] if compilation fails for another reason
     #
     # @example Render with plain data
     #   renderer = Renderer.new("= #data.title")
@@ -127,7 +141,10 @@ module TypstRails
                          local_assigns
                        end
 
-      compile_typst_source(@source, data_for_typst)
+      warnings = []
+      pdf = compile_typst_source(@source, data_for_typst, warnings)
+      report_warnings(warnings)
+      pdf
     end
 
     # MARK: - Private Methods
@@ -145,12 +162,14 @@ module TypstRails
     #
     # @param typst_source [String] The Typst template source
     # @param data [Hash] Data to be made available to the Typst template via JSON
+    # @param warnings [Array<Diagnostics::Diagnostic>] receives warnings
+    #   reported by a successful compile
     # @return [String] Binary PDF data
     # @raise [ArgumentError] if typst_source is empty or data is not a Hash
     # @raise [TypstRails::Error] if compilation fails or produces no output
     #
     # @note This method ensures all temporary files are cleaned up even if errors occur
-    def compile_typst_source(typst_source, data = {})
+    def compile_typst_source(typst_source, data = {}, warnings = [])
       raise ArgumentError, "typst_source cannot be empty" if typst_source.nil? || typst_source.empty?
       raise ArgumentError, "data must be a Hash" unless data.is_a?(Hash)
 
@@ -158,7 +177,7 @@ module TypstRails
       begin
         write_typst_source_file(paths, typst_source)
         write_typst_data_file(paths, data) if reads_data_file?(typst_source)
-        run_typst_compiler(paths)
+        run_typst_compiler(paths, warnings)
       rescue Error
         raise
       rescue StandardError => e
@@ -211,12 +230,53 @@ module TypstRails
       raise Error, "Failed to write data file: #{e.message}"
     end
 
-    def run_typst_compiler(paths)
+    # Backends may yield diagnostic output from a successful compile; the
+    # warnings in it are collected here and reported once rendering is done,
+    # so an on_warning handler that raises is not mistaken for a compile
+    # failure.
+    def run_typst_compiler(paths, warnings)
       backend = Backends::Registry.resolve(configured_backend)
-      backend.compile(paths.typ_path, paths.root)
+      backend.compile(paths.typ_path, paths.root) do |diagnostic_text|
+        warnings.concat(Diagnostics.parse(path_rewriter(paths).rewrite(diagnostic_text)).select(&:warning?))
+      end
+    rescue CompileError => e
+      error = contextualize(e, paths)
+      log_error(error.message)
+      raise error
     rescue Error => e
       log_error(e.message)
       raise
+    end
+
+    # Rebuilds a backend's CompileError with the template's name in place of
+    # the temporary paths. The original stays available as #cause.
+    def contextualize(error, paths)
+      CompileError.new(
+        path_rewriter(paths).rewrite(error.typst_message),
+        template: @template, command: error.command, source: @source
+      )
+    end
+
+    def path_rewriter(paths)
+      Diagnostics::PathRewriter.new(
+        typ_path: paths.typ_path, run_dir: paths.dir, root: paths.root, template: @template
+      )
+    end
+
+    def report_warnings(warnings)
+      return if warnings.empty?
+
+      handler = configured_warning_handler
+      handler&.call(warnings, @template)
+    end
+
+    # @return [#call, nil] TypstRails.configuration.on_warning, or the default
+    #   logger when TypstRails has not been configured
+    def configured_warning_handler
+      config = TypstRails.respond_to?(:configuration) ? TypstRails.configuration : nil
+      return Diagnostics.method(:log_warnings) unless config
+
+      config.on_warning
     end
 
     # @return [Symbol, Backends::Base, nil] the backend preference from
@@ -399,18 +459,4 @@ module TypstRails
       @view_context.respond_to?(method_name, include_private) || super
     end
   end
-
-  # Error class for Typst-related errors.
-  #
-  # Raised when Typst compilation fails, when files cannot be created,
-  # or when other Typst-specific errors occur during rendering.
-  #
-  # @example Handling Typst errors
-  #   begin
-  #     renderer.render(nil, data)
-  #   rescue TypstRails::Error => e
-  #     Rails.logger.error "Typst compilation failed: #{e.message}"
-  #     render plain: "PDF generation failed", status: 500
-  #   end
-  class Error < StandardError; end
 end

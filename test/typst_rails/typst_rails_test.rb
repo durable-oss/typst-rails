@@ -153,6 +153,35 @@ module TypstRails
       TypstRails.configuration = nil
     end
 
+    # MARK: - on_warning setting
+
+    def test_on_warning_defaults_to_logging
+      assert_equal TypstRails::Diagnostics.method(:log_warnings), TypstRails::Configuration.new.on_warning
+    end
+
+    def test_on_warning_accepts_a_callable_or_nil
+      handler = ->(_warnings, _template) {}
+      TypstRails.configure { |config| config.on_warning = handler }
+
+      assert_same handler, TypstRails.configuration.on_warning
+
+      TypstRails.configure { |config| config.on_warning = nil }
+
+      assert_nil TypstRails.configuration.on_warning
+    ensure
+      TypstRails.configuration = nil
+    end
+
+    def test_on_warning_must_be_callable
+      error = assert_raises(ArgumentError) do
+        TypstRails.configure { |config| config.on_warning = "log" }
+      end
+
+      assert_includes error.message, "on_warning"
+    ensure
+      TypstRails.configuration = nil
+    end
+
     # MARK: - backend setting
 
     def test_backend_defaults_to_auto

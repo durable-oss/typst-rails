@@ -425,7 +425,9 @@ module TypstRails
         end
       end
 
-      def test_compilation_failure_message_includes_the_command
+      # The command line is kept for debugging, but left out of the message:
+      # it only repeats temporary paths.
+      def test_compilation_failure_keeps_the_command_out_of_the_message
         backend = Cli.new
 
         Open3.stubs(:capture3).returns(["", "syntax error", mock_status(false)])
@@ -434,10 +436,10 @@ module TypstRails
           typ_path = File.join(dir, "doc.typ")
           File.write(typ_path, "= Test")
 
-          error = assert_raises(Error) { backend.compile(typ_path, dir) }
+          error = assert_raises(CompileError) { backend.compile(typ_path, dir) }
 
-          assert_includes error.message, "Command:"
-          assert_includes error.message, typ_path
+          refute_match(/Command:|#{Regexp.escape(typ_path)}/, error.message)
+          assert_equal ["compile", typ_path], [error.command[1], error.command[-2]]
         end
       end
 
@@ -626,8 +628,36 @@ module TypstRails
           typ_path = File.join(dir, "doc.typ")
           File.write(typ_path, "#foo")
 
-          error = assert_raises(Error) { backend.compile(typ_path, dir) }
-          assert_includes error.message, "Stderr: error: unknown variable: foo"
+          error = assert_raises(CompileError) { backend.compile(typ_path, dir) }
+          assert_includes error.message, "error: unknown variable: foo"
+          assert_equal ["unknown variable: foo"], error.errors.map(&:message)
+        end
+      end
+
+      def test_successful_compile_yields_stderr_to_the_block
+        backend = Cli.new
+        stub_successful_compile(stderr: "warning: unknown font family: x\n")
+
+        Dir.mktmpdir do |dir|
+          typ_path = File.join(dir, "doc.typ")
+          File.write(typ_path, "= Test")
+
+          yielded = []
+          backend.compile(typ_path, dir) { |text| yielded << text }
+
+          assert_equal ["warning: unknown font family: x\n"], yielded
+        end
+      end
+
+      def test_successful_compile_does_not_yield_empty_stderr
+        backend = Cli.new
+        stub_successful_compile(stderr: "")
+
+        Dir.mktmpdir do |dir|
+          typ_path = File.join(dir, "doc.typ")
+          File.write(typ_path, "= Test")
+
+          backend.compile(typ_path, dir) { |_text| flunk "should not yield" }
         end
       end
 
@@ -701,6 +731,13 @@ module TypstRails
         end
 
         captured_cmd
+      end
+
+      def stub_successful_compile(stderr:)
+        Open3.stubs(:capture3).with do |*args|
+          File.binwrite(args.last, "pdf bytes") if args.last.end_with?(".pdf")
+          true
+        end.returns(["", stderr, mock_status(true)])
       end
 
       def reset_configuration!

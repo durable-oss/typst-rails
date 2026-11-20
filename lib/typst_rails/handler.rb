@@ -35,6 +35,7 @@ module TypstRails
       # `erb_engine.src` generates a string of Ruby code. This code, when executed,
       # evaluates the ERB template and appends results to the `eoutvar` (i.e., `@output_buffer`).
       erb_evaluation_code = erb_engine.src
+      renderer_args = renderer_arguments(template)
 
       # The string returned by this `call` method is the final piece of Ruby code
       # that ActionView will `instance_eval`.
@@ -71,13 +72,38 @@ module TypstRails
         end
 
         if _typst_rails_outermost
-          typst_renderer = ::TypstRails::Renderer.new(processed_typst_source)
+          typst_renderer = ::TypstRails::Renderer.new(#{renderer_args})
           typst_renderer.render(self, local_assigns)
         else
           processed_typst_source
         end
       RUBY_CODE
     end
+
+    # Template methods that name the template, best first. short_identifier
+    # is the path relative to Rails.root.
+    TEMPLATE_NAME_METHODS = %i[short_identifier identifier virtual_path].freeze
+
+    # @param template [ActionView::Template]
+    # @return [String, nil] a name for the template in error messages, such
+    #   as "app/views/reports/show.pdf.typ"
+    def self.template_display_name(template)
+      TEMPLATE_NAME_METHODS.each do |name|
+        next unless template.respond_to?(name)
+
+        value = template.public_send(name)
+        return value.to_s unless value.nil? || value.to_s.empty?
+      end
+      nil
+    end
+
+    # The template's name is computed once, here, and embedded in the
+    # generated code as a string literal.
+    def self.renderer_arguments(template)
+      name = template_display_name(template)
+      name ? "processed_typst_source, template: #{name.inspect}" : "processed_typst_source"
+    end
+    private_class_method :renderer_arguments
 
     # Indicates whether this template handler supports streaming.
     # Typst compilation generates a complete PDF file; it's not inherently a streaming process

@@ -1,0 +1,1 @@
+srv/app/typst/typst_rails_20261120-4242-abc123/template.typ:4:9: error: unknown variable: foo

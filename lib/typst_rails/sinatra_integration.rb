@@ -22,7 +22,7 @@ module TypstRails
         # +locals+ are also written to typst_data.json.
         def typst(template, locals = {}, _options = {})
           typst_source = ::TypstRails::ErbSource.render(File.read(template), self, locals)
-          renderer = ::TypstRails::Renderer.new(typst_source)
+          renderer = ::TypstRails::Renderer.new(typst_source, template: template)
 
           # Sinatra doesn't have the same view context as Rails,
           # so we create a simple wrapper

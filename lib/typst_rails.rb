@@ -142,6 +142,15 @@ module TypstRails
     #   Defaults to false.
     attr_accessor :ignore_system_fonts
 
+    # @return [#call, nil] Called with `(warnings, template)` after a
+    #   successful compile that produced warnings: an array of
+    #   {TypstRails::Diagnostics::Diagnostic} and the template's display name
+    #   (or nil). The default logs them through Rails.logger.warn when Rails
+    #   is loaded, and Kernel#warn otherwise. Set to nil to ignore warnings.
+    #   Only the `:cli` backend reports warnings from successful compiles;
+    #   the `typst` gem does not expose them.
+    attr_accessor :on_warning
+
     # Initializes a new Configuration with default values.
     #
     # Default values:
@@ -151,6 +160,7 @@ module TypstRails
     # - `pdf_standard`: nil (plain PDF, no conformance enforced)
     # - `font_paths`: [] (no extra font directories)
     # - `ignore_system_fonts`: false (system fonts are searched)
+    # - `on_warning`: logs warnings (see {TypstRails::Diagnostics.log_warnings})
     #
     # @return [Configuration] A new configuration instance
     #
@@ -166,6 +176,7 @@ module TypstRails
       @pdf_standard = nil
       @font_paths = []
       @ignore_system_fonts = false
+      @on_warning = Diagnostics.method(:log_warnings)
     end
 
     # Sets the font directories. A single String or Pathname is wrapped in an
@@ -212,12 +223,14 @@ module TypstRails
     # - pdf_standard (if set) is a key, or Array of keys, of {PDF_STANDARDS}
     # - font_paths is an Array of Strings or Pathnames
     # - ignore_system_fonts is true or false
+    # - on_warning (if set) responds to #call
     #
     # @return [true] if configuration is valid
     # @raise [ArgumentError] if typst_executable_path is invalid
     # @raise [ArgumentError] if default_root_path is invalid
     # @raise [ArgumentError] if pdf_standard is invalid
     # @raise [ArgumentError] if font_paths or ignore_system_fonts is invalid
+    # @raise [ArgumentError] if on_warning is not callable
     #
     # @example Validate configuration
     #   config = Configuration.new
@@ -234,6 +247,7 @@ module TypstRails
 
       pdf_standards
       validate_font_options!
+      raise ArgumentError, "on_warning must respond to #call, or be nil" if on_warning && !on_warning.respond_to?(:call)
 
       true
     end

@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "typst_rails/errors"
+
 module TypstRails
   module Backends
     # Abstract interface for a Typst compilation backend.
@@ -20,8 +22,15 @@ module TypstRails
       #
       # @param typ_path [String] path to the .typ source file to compile
       # @param root_dir [String] root directory for resolving relative imports
+      # @yieldparam diagnostics [String] Typst's diagnostic output from a
+      #   successful compile, such as warnings. Backends that can see it
+      #   should yield it when a block is given; the Renderer parses it and
+      #   passes the warnings to {TypstRails::Configuration#on_warning}.
+      #   Yielding is optional.
       # @return [String] binary PDF data
-      # @raise [TypstRails::Error] if compilation fails
+      # @raise [TypstRails::CompileError] if Typst rejects the source; pass
+      #   Typst's diagnostic output as the message so it can be parsed
+      # @raise [TypstRails::Error] if compilation fails for another reason
       def compile(typ_path, root_dir)
         raise NotImplementedError, "#{self.class} must implement #compile"
       end

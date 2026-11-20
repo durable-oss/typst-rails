@@ -1,0 +1,12 @@
+error: panicked with: boom
+  ┌─ srv/app/typst/lib.typ:1:13
+  │
+1 │ #let f() = { panic("boom") }
+  │              ^^^^^^^^^^^^^
+
+help: while calling `f`
+  ┌─ srv/app/typst/typst_rails_20261120-4242-abc123/template.typ:4:1
+  │
+4 │ #f()
+  │  ^^^
+

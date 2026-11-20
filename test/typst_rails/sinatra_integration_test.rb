@@ -150,6 +150,18 @@ module TypstRails
       template_file&.unlink
     end
 
+    def test_typst_helper_names_the_template_in_compile_errors
+      base_class = setup_fake_sinatra
+      template_file = create_temp_typst_file("= Test")
+      Renderer.expects(:new).with(anything, template: template_file.path).returns(
+        stub("renderer", render: "pdf")
+      )
+
+      base_class.new.typst(template_file.path)
+    ensure
+      template_file&.unlink
+    end
+
     def test_setup_is_idempotent
       base_class = setup_fake_sinatra
       sinatra_module = Module.new

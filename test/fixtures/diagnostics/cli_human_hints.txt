@@ -1,0 +1,9 @@
+error: unknown variable: ab
+  ┌─ srv/app/typst/typst_rails_20261120-4242-abc123/template.typ:1:6
+  │
+1 │ Some $ab$ math
+  │       ^^
+  │
+  = hint: if you meant to display multiple letters as is, try adding spaces between each letter: `a b`
+  = hint: or if you meant to display this as text, try placing it in quotes: `"ab"`
+

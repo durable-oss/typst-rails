@@ -1,0 +1,2 @@
+srv/app/typst/typst_rails_20261120-4242-abc123/template.typ:2:7: error: unknown variable: undefined_thing
+srv/app/typst/typst_rails_20261120-4242-abc123/template.typ:1:16: warning: unknown font family: nosuchfontxyz
